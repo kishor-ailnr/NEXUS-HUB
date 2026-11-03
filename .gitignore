@@ -21,7 +21,7 @@ out/
 !apps/**/.env.example
 
 # Temporary Scratch Artifacts
-scratch/*.pdf
+scratch/
 
 
 # IDE & OS

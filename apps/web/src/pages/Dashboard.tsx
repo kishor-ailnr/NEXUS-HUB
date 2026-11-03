@@ -496,50 +496,93 @@ export const Dashboard: React.FC = () => {
   const selectedVoyageMovement =
     voyageMovementsList.find((m) => m.id === selectedVoyageMovementId) || null;
 
+  const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId) || null;
+
   return (
-    <div className="flex flex-col min-h-screen bg-slate-950 text-slate-100 antialiased font-sans">
-      {/* Universal Top Header */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-[1920px] mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2.5">
+    <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900 antialiased font-sans">
+      {/* Universal Top Header - Clean Paper-White Single-Row Enterprise Bar */}
+      <header className="border-b border-slate-200/90 bg-white/95 backdrop-blur-md sticky top-0 z-40 shadow-xs">
+        <div className="max-w-[1920px] mx-auto px-4 h-14 sm:h-15 flex items-center justify-between gap-3 sm:gap-4">
+          {/* LEFT SECTION: Logo, Branding & Mode Selector */}
+          <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0">
+            <div
+              onClick={() => navigate('/')}
+              className="flex items-center gap-2 cursor-pointer group"
+              title="Return to Multimodal Hub"
+            >
               <img
                 src="/images/nexus_ways_emblem.png"
                 alt="NEXUS WAYS Logo"
-                className="h-8 w-auto object-contain select-none"
+                className="h-8 w-auto object-contain select-none transition-transform group-hover:scale-105"
               />
-              <span className="font-bold text-base tracking-tight text-white flex items-center gap-1.5">
+              <span className="font-bold text-base tracking-tight text-slate-900 flex items-center gap-1.5">
                 NEXUS WAYS
-
                 <Badge
                   variant="outline"
-                  className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-[10px] uppercase font-mono tracking-wider ml-1"
+                  className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] uppercase font-mono tracking-wider ml-1"
                 >
                   {modeTitle}
                 </Badge>
               </span>
             </div>
 
-            <div className="hidden md:flex items-center gap-3 pl-3 border-l border-slate-800 text-xs text-slate-400">
-              <Building className="w-3.5 h-3.5 text-slate-500" />
-              <span className="text-slate-200 font-medium">
+            {/* Interactive 4-Mode Selector Segment */}
+            <div className="hidden md:flex items-center gap-1 p-1 bg-slate-100 rounded-lg border border-slate-200/80 text-xs">
+              {(
+                [
+                  { id: 'roadways', label: 'Road', fullLabel: 'Roadways', icon: Truck, color: 'text-blue-600', activeBg: 'bg-white text-blue-700 shadow-xs border-blue-200' },
+                  { id: 'railways', label: 'Rail', fullLabel: 'Railways', icon: TrainFront, color: 'text-amber-600', activeBg: 'bg-white text-amber-700 shadow-xs border-amber-200' },
+                  { id: 'airways', label: 'Air', fullLabel: 'Airways', icon: Plane, color: 'text-sky-600', activeBg: 'bg-white text-sky-700 shadow-xs border-sky-200' },
+                  { id: 'seaways', label: 'Sea', fullLabel: 'Seaways', icon: Ship, color: 'text-teal-600', activeBg: 'bg-white text-teal-700 shadow-xs border-teal-200' },
+                ] as const
+              ).map((m) => {
+                const isCur = currentMode === m.id;
+                const Icon = m.icon;
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => navigate(`/${m.id}/dashboard`)}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold text-[11px] transition-all cursor-pointer ${
+                      isCur
+                        ? `${m.activeBg} border`
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    }`}
+                    title={`Switch to ${m.fullLabel} Operations`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 ${m.color}`} />
+                    <span>{m.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Organization Identifier */}
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-200 text-xs text-slate-600">
+              <Building className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-semibold text-slate-800">
                 {user?.organization?.name || 'Organization'}
               </span>
-              <MiniMap
-                latitude={user?.organization?.latitude}
-                longitude={user?.organization?.longitude}
-                orgName={user?.organization?.name}
-                className="hidden xl:flex w-36 h-10"
-              />
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* System Status Indicators */}
+          {/* CENTER SECTION: Live Map Preview Cleanly Aligned */}
+          <div className="hidden xl:flex items-center justify-center flex-shrink-0">
+            <MiniMap
+              latitude={user?.organization?.latitude}
+              longitude={user?.organization?.longitude}
+              orgName={user?.organization?.name}
+              className="h-9 w-32 xl:w-36"
+            />
+          </div>
+
+          {/* SYSTEM STATUS & RIGHT SECTION: All in One Row */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            {/* System Agents, Gateway & Client Latency in one row */}
             <SystemStatusRow
               systemStatus={systemStatus}
               isWsConnected={isWsConnected}
               networkLatency={networkLatency}
+              className="hidden md:flex"
             />
 
             {/* Notification Drawer Button */}
@@ -554,23 +597,25 @@ export const Dashboard: React.FC = () => {
               <AdminPanelModal currentUserRole={user?.role} />
             )}
 
-            {/* User Profile Pill */}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-              <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-semibold text-xs">
-                {user?.fullName?.charAt(0) || <User className="w-4 h-4" />}
+            {/* User Profile Card */}
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+              <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200/90 flex items-center justify-center text-slate-700 font-bold text-xs shadow-xs">
+                {user?.fullName?.charAt(0) || <User className="w-4 h-4 text-slate-500" />}
               </div>
               <div className="hidden sm:block text-left">
-                <div className="text-xs font-semibold text-slate-200 leading-tight">
+                <div className="text-xs font-bold text-slate-900 leading-tight">
                   {user?.fullName}
                 </div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider font-mono">
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">
                   {user?.role}
                 </div>
               </div>
+
+              {/* Logout Button */}
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-slate-400 hover:text-red-400 hover:bg-slate-800"
+                className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
                 onClick={() => {
                   logout();
                   navigate('/');
@@ -586,14 +631,14 @@ export const Dashboard: React.FC = () => {
       </header>
 
       {/* Main Workspace Body */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden bg-slate-50">
         {/* ROADWAYS WORKSPACE */}
         {isRoadways && (
           <div className="flex-1 p-4 space-y-4 max-w-[1920px] w-full mx-auto flex flex-col">
             <StatsRow stats={stats} isLoading={isLoadingStats} />
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 flex-1 min-h-[550px]">
-              <aside className="lg:col-span-1 h-[550px]">
+              <aside className="lg:col-span-1 min-h-[550px]">
                 <VehicleSidebar
                   vehicles={vehicles}
                   drivers={drivers}
@@ -606,7 +651,7 @@ export const Dashboard: React.FC = () => {
                 />
               </aside>
 
-              <div className="lg:col-span-3 h-[550px] rounded-xl overflow-hidden border border-slate-800 shadow-xl relative">
+              <div className="lg:col-span-3 min-h-[550px] rounded-xl overflow-hidden border border-slate-800 shadow-xs relative bg-white">
                 <RoadwaysMap
                   vehicles={vehicles}
                   activeTrips={trips}
@@ -800,9 +845,16 @@ export const Dashboard: React.FC = () => {
         />
       )}
 
-      {/* Roadways Trip Details Panel */}
-      {isRoadways && selectedTrip && (
-        <TripDetailsPanel trip={selectedTrip} onClose={() => setSelectedTrip(null)} />
+      {/* Roadways Fleet Vehicle & Trip Intelligence Sidebar */}
+      {isRoadways && (selectedTrip || selectedVehicle) && (
+        <TripDetailsPanel
+          trip={selectedTrip}
+          vehicle={selectedVehicle}
+          onClose={() => {
+            setSelectedTrip(null);
+            setSelectedVehicleId(null);
+          }}
+        />
       )}
 
       {/* Railways Movement Creation Modal */}

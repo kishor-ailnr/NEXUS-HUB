@@ -217,7 +217,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ currentUserRol
       {/* 1. Step-up Password Re-entry Modal */}
       {isPasswordModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <Card className="w-full max-w-md shadow-2xl border-slate-200">
+          <Card className="w-full max-w-md shadow-2xl border-slate-800">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-navy/10 rounded-lg text-navy">
@@ -307,7 +307,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ currentUserRol
       {/* 2. Admin Panel Full Modal */}
       {isAdminPanelOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col my-auto">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-800 w-full max-w-4xl max-h-[90vh] flex flex-col my-auto">
             {/* Modal Header */}
             <div className="p-6 border-b border-slate-200 flex items-center justify-between bg-slate-50 rounded-t-2xl">
               <div className="flex items-center gap-3">
@@ -350,7 +350,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ currentUserRol
                   </Button>
                 </div>
 
-                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="border border-slate-800 rounded-xl overflow-hidden shadow-sm">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-slate-100 text-xs text-slate-600 uppercase border-b border-slate-200">
                       <tr>
@@ -485,7 +485,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({ currentUserRol
                     </p>
                   </div>
                 ) : (
-                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm" data-testid="reports-table">
+                  <div className="border border-slate-800 rounded-xl overflow-hidden shadow-sm" data-testid="reports-table">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">

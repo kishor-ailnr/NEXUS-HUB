@@ -522,21 +522,21 @@ export const DriverDashboard: React.FC = () => {
 
   return (
     <div
-      className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans"
+      className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans"
       data-testid="driver-dashboard"
     >
       {/* Mobile-First Header */}
-      <header className="bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between shadow-md sticky top-0 z-40">
-        <div className="flex items-center gap-2">
+      <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-4 py-3 flex items-center justify-between shadow-xs sticky top-0 z-40">
+        <div className="flex items-center gap-2.5">
           <div
-            className={`p-2 rounded-lg border ${
+            className={`p-2 rounded-xl border ${
               isSeaways
-                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                ? 'bg-cyan-50 text-cyan-700 border-cyan-200'
                 : isAirways
-                ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                ? 'bg-sky-50 text-sky-700 border-sky-200'
                 : isRailways
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                : 'bg-blue-50 text-blue-700 border-blue-200'
             }`}
           >
             {isSeaways ? (
@@ -550,7 +550,7 @@ export const DriverDashboard: React.FC = () => {
             )}
           </div>
           <div>
-            <h1 className="text-sm font-bold text-white tracking-wide">
+            <h1 className="text-sm font-bold text-slate-900 tracking-tight">
               {isSeaways
                 ? 'Bridge Master & Helm Console'
                 : isAirways
@@ -559,7 +559,7 @@ export const DriverDashboard: React.FC = () => {
                 ? 'Loco Pilot Console'
                 : 'NEXUS WAYS • Driver Console'}
             </h1>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-500">
               {user?.fullName || 'Crew Member'} &bull; {user?.organization?.name || 'NEXUS WAYS'}
             </p>
           </div>
@@ -570,7 +570,7 @@ export const DriverDashboard: React.FC = () => {
             variant="outline"
             size="sm"
             onClick={() => navigate('/')}
-            className="border-slate-700 bg-slate-900 text-slate-300 hover:text-white h-8 text-xs gap-1"
+            className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 h-8 text-xs gap-1 shadow-xs"
           >
             <Home className="w-3.5 h-3.5" />
             Hub
@@ -579,7 +579,7 @@ export const DriverDashboard: React.FC = () => {
             variant="destructive"
             size="sm"
             onClick={() => logout().then(() => navigate(`/${currentMode}/login`))}
-            className="h-8 text-xs bg-rose-600 hover:bg-rose-500 text-white gap-1"
+            className="h-8 text-xs bg-rose-600 hover:bg-rose-700 text-white gap-1 shadow-xs"
           >
             <LogOut className="w-3.5 h-3.5" />
             Logout
@@ -592,15 +592,17 @@ export const DriverDashboard: React.FC = () => {
         {/* SEAWAYS BRIDGE MASTER VIEW */}
         {isSeaways && (
           <>
-            <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
-              <CardHeader className="p-4 border-b border-slate-800 flex flex-row items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Ship className="w-5 h-5 text-sky-400" />
+            <Card className="bg-white border-slate-800 shadow-sm rounded-xl overflow-hidden">
+              <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-cyan-50 text-cyan-600 border border-cyan-200">
+                    <Ship className="w-5 h-5" />
+                  </div>
                   <div>
-                    <CardTitle className="text-sm font-bold text-white">
+                    <CardTitle className="text-sm font-bold text-slate-900">
                       Voyage: {activeVoyageMovement?.voyage?.voyage_number || 'Unscheduled'}
                     </CardTitle>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-500">
                       Vessel: {assignedVessel?.vessel_name || 'N/A'} ({assignedVessel?.vessel_type || 'Cargo Ship'})
                     </p>
                   </div>
@@ -609,10 +611,10 @@ export const DriverDashboard: React.FC = () => {
                   variant="outline"
                   className={
                     activeVoyageMovement?.status === 'in_transit'
-                      ? 'bg-sky-500/10 text-sky-400 border-sky-500/30 animate-pulse text-xs'
+                      ? 'bg-cyan-50 text-cyan-700 border-cyan-300 font-semibold text-xs'
                       : activeVoyageMovement?.status === 'completed'
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-xs'
-                      : 'bg-slate-800 text-slate-400 border-slate-700 text-xs'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 text-xs'
+                      : 'bg-slate-100 text-slate-600 border-slate-200 text-xs'
                   }
                 >
                   {activeVoyageMovement?.status || 'No Active Voyage'}
@@ -621,29 +623,29 @@ export const DriverDashboard: React.FC = () => {
 
               <CardContent className="p-4 space-y-3 text-xs">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Speed (Knots)</span>
-                    <p className="font-bold text-sky-400 text-base flex items-center justify-center gap-1 mt-0.5">
-                      <Gauge className="w-3.5 h-3.5" />
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Speed (Knots)</span>
+                    <p className="font-bold text-cyan-700 text-base flex items-center justify-center gap-1 mt-0.5">
+                      <Gauge className="w-3.5 h-3.5 text-cyan-600" />
                       {liveSea?.speedKnots ?? (activeVoyageMovement?.status === 'in_transit' ? 18.5 : 0)} kts
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Sea Distance</span>
-                    <p className="font-bold text-white text-base mt-0.5">
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Sea Distance</span>
+                    <p className="font-bold text-slate-900 text-base mt-0.5">
                       {activeVoyageMovement?.distance_km || 0} km
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">True Heading</span>
-                    <p className="font-bold text-amber-400 text-sm mt-0.5 flex items-center justify-center gap-1">
-                      <Compass className="w-3.5 h-3.5" />
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">True Heading</span>
+                    <p className="font-bold text-amber-700 text-sm mt-0.5 flex items-center justify-center gap-1">
+                      <Compass className="w-3.5 h-3.5 text-amber-600" />
                       {liveSea?.heading != null ? `${Math.round(liveSea.heading)}°` : '000°'}
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Est. Duration</span>
-                    <p className="font-bold text-blue-400 text-sm mt-0.5 truncate">
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Est. Duration</span>
+                    <p className="font-bold text-blue-700 text-sm mt-0.5 truncate">
                       {activeVoyageMovement?.duration_minutes || 0} min
                     </p>
                   </div>
@@ -651,18 +653,18 @@ export const DriverDashboard: React.FC = () => {
 
                 {/* Ports path */}
                 {activeVoyageMovement?.voyage && (
-                  <div className="p-3 bg-slate-950/40 rounded-lg border border-slate-800 space-y-2">
-                    <div className="flex items-center gap-2 text-slate-200">
-                      <Anchor className="w-4 h-4 text-sky-400 shrink-0" />
-                      <span className="text-slate-400">Origin Port:</span>
-                      <span className="font-semibold text-white">
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-800 space-y-2">
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <Anchor className="w-4 h-4 text-cyan-600 shrink-0" />
+                      <span className="text-slate-500">Origin Port:</span>
+                      <span className="font-semibold text-slate-900">
                         {activeVoyageMovement.voyage.origin_port?.name} ({activeVoyageMovement.voyage.origin_port?.unlocode || 'PORT'})
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-slate-200">
-                      <Anchor className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span className="text-slate-400">Destination Port:</span>
-                      <span className="font-semibold text-white">
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <Anchor className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span className="text-slate-500">Destination Port:</span>
+                      <span className="font-semibold text-slate-900">
                         {activeVoyageMovement.voyage.destination_port?.name} ({activeVoyageMovement.voyage.destination_port?.unlocode || 'PORT'})
                       </span>
                     </div>
@@ -672,17 +674,17 @@ export const DriverDashboard: React.FC = () => {
             </Card>
 
             {/* Live Land-Avoiding Marine Navigation Window */}
-            <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
-              <CardHeader className="p-3 border-b border-slate-800 flex flex-row items-center justify-between">
-                <CardTitle className="text-xs font-semibold text-slate-300 flex items-center gap-2">
-                  <Navigation className="w-4 h-4 text-sky-400" />
+            <Card className="bg-white border-slate-800 shadow-sm rounded-xl overflow-hidden">
+              <CardHeader className="p-3 border-b border-slate-100 flex flex-row items-center justify-between">
+                <CardTitle className="text-xs font-semibold text-slate-800 flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-cyan-600" />
                   Live Land-Avoiding Sea Navigation Track
                 </CardTitle>
-                <Badge variant="outline" className="text-[10px] bg-slate-950 text-slate-400 border-slate-700">
+                <Badge variant="outline" className="text-[10px] bg-slate-50 text-slate-600 border-slate-200">
                   Open-Water Searoute
                 </Badge>
               </CardHeader>
-              <div ref={mapContainerRef} className="h-72 w-full bg-slate-950" />
+              <div ref={mapContainerRef} className="h-72 w-full bg-slate-100" />
             </Card>
           </>
         )}
@@ -690,15 +692,17 @@ export const DriverDashboard: React.FC = () => {
         {/* AIRWAYS FLIGHT CREW VIEW */}
         {isAirways && (
           <>
-            <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
-              <CardHeader className="p-4 border-b border-slate-800 flex flex-row items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Plane className="w-5 h-5 text-cyan-400" />
+            <Card className="bg-white border-slate-800 shadow-sm rounded-xl overflow-hidden">
+              <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-sky-50 text-sky-600 border border-sky-200">
+                    <Plane className="w-5 h-5" />
+                  </div>
                   <div>
-                    <CardTitle className="text-sm font-bold text-white">
+                    <CardTitle className="text-sm font-bold text-slate-900">
                       Flight: {activeFlightMovement?.flight?.flight_number || 'Unscheduled'}
                     </CardTitle>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-500">
                       Aircraft: {assignedAircraft?.tail_number || 'N/A'} ({assignedAircraft?.aircraft_type || 'Cargo Jet'})
                     </p>
                   </div>
@@ -707,10 +711,10 @@ export const DriverDashboard: React.FC = () => {
                   variant="outline"
                   className={
                     activeFlightMovement?.status === 'in_transit'
-                      ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 animate-pulse text-xs'
+                      ? 'bg-sky-50 text-sky-700 border-sky-300 font-semibold text-xs'
                       : activeFlightMovement?.status === 'completed'
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-xs'
-                      : 'bg-slate-800 text-slate-400 border-slate-700 text-xs'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 text-xs'
+                      : 'bg-slate-100 text-slate-600 border-slate-200 text-xs'
                   }
                 >
                   {activeFlightMovement?.status || 'No Active Flight'}
@@ -719,16 +723,16 @@ export const DriverDashboard: React.FC = () => {
 
               <CardContent className="p-4 space-y-3 text-xs">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Airspeed</span>
-                    <p className="font-bold text-cyan-400 text-base flex items-center justify-center gap-1 mt-0.5">
-                      <Gauge className="w-3.5 h-3.5" />
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Airspeed</span>
+                    <p className="font-bold text-sky-700 text-base flex items-center justify-center gap-1 mt-0.5">
+                      <Gauge className="w-3.5 h-3.5 text-sky-600" />
                       {liveFlight?.speedKts ?? (activeFlightMovement?.status === 'in_transit' ? 450 : 0)} kts
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Altitude</span>
-                    <p className="font-bold text-white text-base mt-0.5">
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Altitude</span>
+                    <p className="font-bold text-slate-900 text-base mt-0.5">
                       {liveFlight?.altitudeFt != null
                         ? `${liveFlight.altitudeFt.toLocaleString()} ft`
                         : activeFlightMovement?.status === 'in_transit'
@@ -736,16 +740,16 @@ export const DriverDashboard: React.FC = () => {
                         : '0 ft'}
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Heading</span>
-                    <p className="font-bold text-amber-400 text-sm mt-0.5 flex items-center justify-center gap-1">
-                      <Compass className="w-3.5 h-3.5" />
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Heading</span>
+                    <p className="font-bold text-amber-700 text-sm mt-0.5 flex items-center justify-center gap-1">
+                      <Compass className="w-3.5 h-3.5 text-amber-600" />
                       {liveFlight?.heading != null ? `${Math.round(liveFlight.heading)}°` : '000°'}
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Great-Circle Dist</span>
-                    <p className="font-bold text-blue-400 text-sm mt-0.5 truncate">
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Great-Circle Dist</span>
+                    <p className="font-bold text-blue-700 text-sm mt-0.5 truncate">
                       {activeFlightMovement?.distance_km || 0} km
                     </p>
                   </div>
@@ -753,18 +757,18 @@ export const DriverDashboard: React.FC = () => {
 
                 {/* Airports path */}
                 {activeFlightMovement?.flight && (
-                  <div className="p-3 bg-slate-950/40 rounded-lg border border-slate-800 space-y-2">
-                    <div className="flex items-center gap-2 text-slate-200">
-                      <MapPin className="w-4 h-4 text-cyan-400 shrink-0" />
-                      <span className="text-slate-400">Origin:</span>
-                      <span className="font-semibold text-white">
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-800 space-y-2">
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <MapPin className="w-4 h-4 text-sky-600 shrink-0" />
+                      <span className="text-slate-500">Origin:</span>
+                      <span className="font-semibold text-slate-900">
                         {activeFlightMovement.flight.origin_airport?.name} ({activeFlightMovement.flight.origin_airport?.iata_code || activeFlightMovement.flight.origin_airport?.icao_code || 'ORIG'})
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-slate-200">
-                      <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span className="text-slate-400">Destination:</span>
-                      <span className="font-semibold text-white">
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <MapPin className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span className="text-slate-500">Destination:</span>
+                      <span className="font-semibold text-slate-900">
                         {activeFlightMovement.flight.destination_airport?.name} ({activeFlightMovement.flight.destination_airport?.iata_code || activeFlightMovement.flight.destination_airport?.icao_code || 'DEST'})
                       </span>
                     </div>
@@ -774,17 +778,17 @@ export const DriverDashboard: React.FC = () => {
             </Card>
 
             {/* Live Great-Circle Navigation Window */}
-            <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
-              <CardHeader className="p-3 border-b border-slate-800 flex flex-row items-center justify-between">
-                <CardTitle className="text-xs font-semibold text-slate-300 flex items-center gap-2">
-                  <Navigation className="w-4 h-4 text-cyan-400" />
+            <Card className="bg-white border-slate-800 shadow-sm rounded-xl overflow-hidden">
+              <CardHeader className="p-3 border-b border-slate-100 flex flex-row items-center justify-between">
+                <CardTitle className="text-xs font-semibold text-slate-800 flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-sky-600" />
                   Live Great-Circle Flight Path
                 </CardTitle>
-                <Badge variant="outline" className="text-[10px] bg-slate-950 text-slate-400 border-slate-700">
+                <Badge variant="outline" className="text-[10px] bg-slate-50 text-slate-600 border-slate-200">
                   Exact Arc Geometry
                 </Badge>
               </CardHeader>
-              <div ref={mapContainerRef} className="h-72 w-full bg-slate-950" />
+              <div ref={mapContainerRef} className="h-72 w-full bg-slate-100" />
             </Card>
           </>
         )}
@@ -793,15 +797,17 @@ export const DriverDashboard: React.FC = () => {
         {isRailways && (
           <>
             {/* Active Train Movement Card */}
-            <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
-              <CardHeader className="p-4 border-b border-slate-800 flex flex-row items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <TrainFront className="w-5 h-5 text-emerald-400" />
+            <Card className="bg-white border-slate-800 shadow-sm rounded-xl overflow-hidden">
+              <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-amber-50 text-amber-600 border border-amber-200">
+                    <TrainFront className="w-5 h-5" />
+                  </div>
                   <div>
-                    <CardTitle className="text-sm font-bold text-white">
+                    <CardTitle className="text-sm font-bold text-slate-900">
                       Train Service: {assignedTrain?.train_number || 'Unassigned'}
                     </CardTitle>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-500">
                       {assignedTrain?.train_name || 'Scheduled Service'}
                     </p>
                   </div>
@@ -810,10 +816,10 @@ export const DriverDashboard: React.FC = () => {
                   variant="outline"
                   className={
                     activeMovement?.status === 'in_transit'
-                      ? 'bg-blue-500/10 text-blue-400 border-blue-500/30 animate-pulse text-xs'
+                      ? 'bg-blue-50 text-blue-700 border-blue-300 font-semibold text-xs'
                       : activeMovement?.status === 'completed'
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-xs'
-                      : 'bg-slate-800 text-slate-400 border-slate-700 text-xs'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 text-xs'
+                      : 'bg-slate-100 text-slate-600 border-slate-200 text-xs'
                   }
                 >
                   {activeMovement?.status || 'No Active Movement'}
@@ -822,28 +828,28 @@ export const DriverDashboard: React.FC = () => {
 
               <CardContent className="p-4 space-y-3 text-xs">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Speed</span>
-                    <p className="font-bold text-emerald-400 text-base flex items-center justify-center gap-1 mt-0.5">
-                      <Radio className="w-3.5 h-3.5" />
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Speed</span>
+                    <p className="font-bold text-emerald-700 text-base flex items-center justify-center gap-1 mt-0.5">
+                      <Radio className="w-3.5 h-3.5 text-emerald-600" />
                       {liveRail?.speedKmh ?? (activeMovement?.status === 'in_transit' ? 75 : 0)} km/h
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Track Distance</span>
-                    <p className="font-bold text-white text-base mt-0.5">
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Track Distance</span>
+                    <p className="font-bold text-slate-900 text-base mt-0.5">
                       {activeMovement?.distance_km || 0} km
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Locomotive</span>
-                    <p className="font-bold text-amber-400 text-sm mt-0.5 truncate">
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Locomotive</span>
+                    <p className="font-bold text-amber-700 text-sm mt-0.5 truncate">
                       {assignedTrain?.locomotive?.loco_number || 'Electric'}
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Rake Co.</span>
-                    <p className="font-bold text-blue-400 text-sm mt-0.5 truncate">
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Rake Co.</span>
+                    <p className="font-bold text-blue-700 text-sm mt-0.5 truncate">
                       {assignedTrain?.rake?.rake_id || '16 Coaches'}
                     </p>
                   </div>
@@ -851,16 +857,16 @@ export const DriverDashboard: React.FC = () => {
 
                 {/* Stations path */}
                 {activeMovement && (
-                  <div className="p-3 bg-slate-950/40 rounded-lg border border-slate-800 space-y-2">
-                    <div className="flex items-center gap-2 text-slate-200">
-                      <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span className="text-slate-400">Origin:</span>
-                      <span className="font-semibold text-white">{activeMovement.origin_station?.name}</span>
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-800 space-y-2">
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="text-slate-500">Origin:</span>
+                      <span className="font-semibold text-slate-900">{activeMovement.origin_station?.name}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-slate-200">
-                      <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span className="text-slate-400">Destination:</span>
-                      <span className="font-semibold text-white">{activeMovement.destination_station?.name}</span>
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <MapPin className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span className="text-slate-500">Destination:</span>
+                      <span className="font-semibold text-slate-900">{activeMovement.destination_station?.name}</span>
                     </div>
                   </div>
                 )}
@@ -868,17 +874,17 @@ export const DriverDashboard: React.FC = () => {
             </Card>
 
             {/* Live OpenRailwayMap Window */}
-            <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
-              <CardHeader className="p-3 border-b border-slate-800 flex flex-row items-center justify-between">
-                <CardTitle className="text-xs font-semibold text-slate-300 flex items-center gap-2">
-                  <Navigation className="w-4 h-4 text-emerald-400" />
+            <Card className="bg-white border-slate-800 shadow-sm rounded-xl overflow-hidden">
+              <CardHeader className="p-3 border-b border-slate-100 flex flex-row items-center justify-between">
+                <CardTitle className="text-xs font-semibold text-slate-800 flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-emerald-600" />
                   Live OpenRailwayMap Track Position
                 </CardTitle>
-                <Badge variant="outline" className="text-[10px] bg-slate-950 text-slate-400 border-slate-700">
+                <Badge variant="outline" className="text-[10px] bg-slate-50 text-slate-600 border-slate-200">
                   Real Rail Geometry
                 </Badge>
               </CardHeader>
-              <div ref={mapContainerRef} className="h-72 w-full bg-slate-950" />
+              <div ref={mapContainerRef} className="h-72 w-full bg-slate-100" />
             </Card>
           </>
         )}
@@ -886,15 +892,17 @@ export const DriverDashboard: React.FC = () => {
         {/* ROADWAYS DRIVER VIEW */}
         {!isRailways && !isAirways && !isSeaways && (
           <>
-            <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
-              <CardHeader className="p-4 border-b border-slate-800 flex flex-row items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Truck className="w-5 h-5 text-status-informational" />
+            <Card className="bg-white border-slate-800 shadow-sm rounded-xl overflow-hidden">
+              <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-blue-50 text-blue-600 border border-blue-200">
+                    <Truck className="w-5 h-5" />
+                  </div>
                   <div>
-                    <CardTitle className="text-sm font-bold text-white">
+                    <CardTitle className="text-sm font-bold text-slate-900">
                       Vehicle: {assignedVehicle?.registration_number || 'Unassigned'}
                     </CardTitle>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-500">
                       {assignedVehicle?.vehicle_type || 'Assigned Commercial Unit'}
                     </p>
                   </div>
@@ -903,10 +911,10 @@ export const DriverDashboard: React.FC = () => {
                   variant="outline"
                   className={
                     activeTrip?.status === 'in_transit'
-                      ? 'bg-blue-500/10 text-blue-400 border-blue-500/30 animate-pulse text-xs'
+                      ? 'bg-blue-50 text-blue-700 border-blue-300 font-semibold text-xs'
                       : activeTrip?.status === 'completed'
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-xs'
-                      : 'bg-slate-800 text-slate-400 border-slate-700 text-xs'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 text-xs'
+                      : 'bg-slate-100 text-slate-600 border-slate-200 text-xs'
                   }
                 >
                   {activeTrip?.status || 'Idle'}
@@ -915,51 +923,51 @@ export const DriverDashboard: React.FC = () => {
 
               <CardContent className="p-4 space-y-3 text-xs">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Live Speed</span>
-                    <p className="font-bold text-status-informational text-base mt-0.5">
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Live Speed</span>
+                    <p className="font-bold text-blue-700 text-base mt-0.5">
                       {liveGps?.speed_kmh || 0} km/h
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Trip Distance</span>
-                    <p className="font-bold text-white text-base mt-0.5">
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Trip Distance</span>
+                    <p className="font-bold text-slate-900 text-base mt-0.5">
                       {activeTrip?.distance_km || 0} km
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800/80">
-                    <span className="text-[11px] text-slate-500">Est. Duration</span>
-                    <p className="font-bold text-white text-base mt-0.5">
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                    <span className="text-[11px] text-slate-500 font-medium">Est. Duration</span>
+                    <p className="font-bold text-slate-900 text-base mt-0.5">
                       {activeTrip?.duration_minutes || 0} min
                     </p>
                   </div>
                 </div>
 
                 {activeTrip && (
-                  <div className="p-3 bg-slate-950/40 rounded-lg border border-slate-800 space-y-2">
-                    <div className="flex items-center gap-2 text-slate-200">
-                      <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span className="text-slate-400">Origin:</span>
-                      <span className="font-semibold text-white">{activeTrip.origin_label}</span>
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-800 space-y-2">
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="text-slate-500">Origin:</span>
+                      <span className="font-semibold text-slate-900">{activeTrip.origin_label}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-slate-200">
-                      <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span className="text-slate-400">Destination:</span>
-                      <span className="font-semibold text-white">{activeTrip.destination_label}</span>
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <MapPin className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span className="text-slate-500">Destination:</span>
+                      <span className="font-semibold text-slate-900">{activeTrip.destination_label}</span>
                     </div>
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            <Card className="bg-slate-900 border-slate-800 shadow-xl overflow-hidden">
-              <CardHeader className="p-3 border-b border-slate-800 flex flex-row items-center justify-between">
-                <CardTitle className="text-xs font-semibold text-slate-300 flex items-center gap-2">
-                  <Navigation className="w-4 h-4 text-status-informational" />
+            <Card className="bg-white border-slate-800 shadow-sm rounded-xl overflow-hidden">
+              <CardHeader className="p-3 border-b border-slate-100 flex flex-row items-center justify-between">
+                <CardTitle className="text-xs font-semibold text-slate-800 flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-blue-600" />
                   Live Navigation Route
                 </CardTitle>
               </CardHeader>
-              <div ref={mapContainerRef} className="h-72 w-full bg-slate-950" />
+              <div ref={mapContainerRef} className="h-72 w-full bg-slate-100" />
             </Card>
           </>
         )}

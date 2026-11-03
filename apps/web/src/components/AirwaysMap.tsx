@@ -91,8 +91,8 @@ export const AirwaysMap: React.FC<AirwaysMapProps> = ({
       zoomControl: true,
     });
 
-    // Dark base map layer (CartoDB Dark Matter)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // Light base map layer (CartoDB Positron)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
       maxZoom: 19,
     }).addTo(map);
@@ -383,12 +383,12 @@ export const AirwaysMap: React.FC<AirwaysMapProps> = ({
   }, [selectedMovement, liveTelemetry]);
 
   return (
-    <div className="relative w-full h-full" data-testid="airways-map">
+    <div className="relative w-full h-full bg-slate-50" data-testid="airways-map">
       <div ref={mapContainerRef} className="w-full h-full z-0" />
-      <div className="absolute top-4 right-4 z-10 bg-card/85 backdrop-blur-md px-3 py-1.5 rounded-md border border-border text-xs flex items-center gap-2 shadow-lg">
-        <Plane className="h-4 w-4 text-sky-400" />
-        <span className="font-medium text-foreground">Airways Live Radar</span>
-        <span className="text-[10px] text-muted-foreground font-mono">(Great-Circle & Digital Twin)</span>
+      <div className="absolute top-3 left-14 z-10 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-200/90 text-xs flex items-center gap-2 shadow-xs">
+        <Plane className="h-4 w-4 text-sky-600" />
+        <span className="font-semibold text-slate-900">Airways Live Radar</span>
+        <span className="text-[10px] text-slate-500 font-mono">(Great-Circle & Digital Twin)</span>
       </div>
     </div>
   );

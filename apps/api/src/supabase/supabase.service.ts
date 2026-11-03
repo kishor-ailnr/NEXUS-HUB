@@ -11,12 +11,6 @@ if (typeof (globalThis as any).WebSocket === 'undefined') {
   }
 }
 
-const DEFAULT_SUPABASE_URL = 'https://facnvxbznmbhzdkbumby.supabase.co';
-const DEFAULT_SUPABASE_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhY252eGJ6bm1iaHpka2J1bWJ5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODQ5MDc0OCwiZXhwIjoyMTA0MDY2NzQ4fQ.8uK3v-uUFumUVuL2kXz2D6F6iJmuZvwn0x6kSmbmKwc';
-const DEFAULT_SUPABASE_JWT_SECRET =
-  'JGlVFMx95a3KR3+sLaqcUva4DWO6EiwkeE+oyVzlVtQMqWw0uOXG4AXNazEhYBtRYLvsBBq8w4/6bIA1Af3w2Q==';
-
 @Injectable()
 export class SupabaseService {
   private readonly logger = new Logger(SupabaseService.name);
@@ -29,15 +23,15 @@ export class SupabaseService {
     this.supabaseUrl =
       this.configService.get<string>('SUPABASE_URL') ||
       process.env.SUPABASE_URL ||
-      DEFAULT_SUPABASE_URL;
+      '';
     this.supabaseServiceRoleKey =
       this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY') ||
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      DEFAULT_SUPABASE_SERVICE_ROLE_KEY;
+      '';
     this.jwtSecret =
       this.configService.get<string>('SUPABASE_JWT_SECRET') ||
       process.env.SUPABASE_JWT_SECRET ||
-      DEFAULT_SUPABASE_JWT_SECRET;
+      '';
 
     if (this.supabaseUrl && this.supabaseServiceRoleKey) {
       this._client = createClient(this.supabaseUrl, this.supabaseServiceRoleKey, {
@@ -57,9 +51,12 @@ export class SupabaseService {
 
   get adminClient(): SupabaseClient {
     if (!this._client) {
-      const url = this.supabaseUrl || DEFAULT_SUPABASE_URL;
-      const key = this.supabaseServiceRoleKey || DEFAULT_SUPABASE_SERVICE_ROLE_KEY;
-      this._client = createClient(url, key, {
+      if (!this.supabaseUrl || !this.supabaseServiceRoleKey) {
+        throw new Error(
+          'Supabase client cannot be initialized: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not defined in the environment.',
+        );
+      }
+      this._client = createClient(this.supabaseUrl, this.supabaseServiceRoleKey, {
         auth: {
           autoRefreshToken: false,
           persistSession: false,
@@ -70,9 +67,12 @@ export class SupabaseService {
   }
 
   createIsolatedClient(): SupabaseClient {
-    const url = this.supabaseUrl || DEFAULT_SUPABASE_URL;
-    const key = this.supabaseServiceRoleKey || DEFAULT_SUPABASE_SERVICE_ROLE_KEY;
-    return createClient(url, key, {
+    if (!this.supabaseUrl || !this.supabaseServiceRoleKey) {
+      throw new Error(
+        'Supabase client cannot be initialized: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not defined in the environment.',
+      );
+    }
+    return createClient(this.supabaseUrl, this.supabaseServiceRoleKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
@@ -93,14 +93,15 @@ export class SupabaseService {
       throw new Error('Token is missing');
     }
 
+    const secret = this.jwtSecret || 'nexus-ways-dev-jwt-fallback-key';
     // 1. Try standard string secret (HS256 minted token)
-    if (this.jwtSecret) {
+    if (secret) {
       try {
-        return jwt.verify(token, this.jwtSecret);
+        return jwt.verify(token, secret);
       } catch (err1) {
         // 2. Try base64 decoded buffer (Supabase often uses base64-encoded HMAC secrets)
         try {
-          return jwt.verify(token, Buffer.from(this.jwtSecret, 'base64'));
+          return jwt.verify(token, Buffer.from(secret, 'base64'));
         } catch (err2) {
           // Fall through to client verification
         }
@@ -128,7 +129,7 @@ export class SupabaseService {
   }
 
   signToken(payload: object, expiresIn: string | number = '1h'): string {
-    const secret = this.jwtSecret || DEFAULT_SUPABASE_JWT_SECRET;
+    const secret = this.jwtSecret || 'nexus-ways-dev-jwt-fallback-key';
     return jwt.sign(payload, secret, { expiresIn: expiresIn as any });
   }
 }

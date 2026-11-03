@@ -220,24 +220,24 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
   };
 
   return (
-    <div className="w-80 h-full flex flex-col bg-slate-900 border-r border-slate-800 text-slate-100 select-none">
+    <div className="w-80 md:w-88 h-full flex flex-col bg-white border-r border-slate-800 text-slate-800 select-none shadow-xs">
       {/* Header & Search */}
-      <div className="p-4 border-b border-slate-800 space-y-3">
+      <div className="p-4 border-b border-slate-200/80 bg-white space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600 border border-blue-100">
               <TrainFront className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white tracking-wide">Rail Operations</h2>
-              <p className="text-xs text-slate-400">Fixed Track Infrastructure</p>
+              <h2 className="text-sm font-bold text-slate-900 tracking-wide">Rail Operations</h2>
+              <p className="text-xs text-slate-500">Fixed Track Infrastructure</p>
             </div>
           </div>
           {isManager && (
             <Button
               size="sm"
               onClick={onOpenCreateMovement}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-8 px-2.5 gap-1.5 shadow-sm shadow-emerald-950"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-8 px-2.5 gap-1.5 shadow-xs"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
               Dispatch
@@ -251,7 +251,7 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search trains, stations..."
-            className="pl-9 bg-slate-950 border-slate-800 text-xs text-white placeholder:text-slate-500 h-9"
+            className="pl-9 bg-slate-50 border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 h-9 focus:bg-white"
           />
         </div>
 
@@ -259,60 +259,60 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
         <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none text-xs">
           <button
             onClick={() => setActiveTab('trains')}
-            className={`px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
               activeTab === 'trains'
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
           >
             Trains ({trains.length})
           </button>
           <button
             onClick={() => setActiveTab('movements')}
-            className={`px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
               activeTab === 'movements'
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
           >
             Movements ({movements.length})
           </button>
           <button
             onClick={() => setActiveTab('stations')}
-            className={`px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
               activeTab === 'stations'
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
           >
             Stations ({stations.length})
           </button>
           <button
             onClick={() => setActiveTab('locos')}
-            className={`px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
               activeTab === 'locos'
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
           >
             Locos ({locomotives.length})
           </button>
           <button
             onClick={() => setActiveTab('rakes')}
-            className={`px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
               activeTab === 'rakes'
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
           >
             Rakes ({rakes.length})
           </button>
           <button
             onClick={() => setActiveTab('pilots')}
-            className={`px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
               activeTab === 'pilots'
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-blue-50 text-blue-700 border border-blue-200 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
           >
             Pilots ({locoPilots.length})
@@ -321,7 +321,7 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
       </div>
 
       {/* Main Tab Content */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-slate-50/50">
         {/* TRAINS TAB */}
         {activeTab === 'trains' && (
           <div className="space-y-2">
@@ -330,7 +330,7 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={() => setIsAddTrainOpen(true)}
-                className="w-full justify-center gap-2 border-dashed border-slate-700 hover:border-slate-500 bg-slate-950/40 text-slate-300 hover:text-white h-9 text-xs mb-2"
+                className="w-full justify-center gap-2 border-dashed border-slate-300 hover:border-slate-400 bg-white text-slate-700 hover:text-slate-900 h-9 text-xs mb-2 shadow-xs"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Add Train Composition
@@ -346,26 +346,26 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
                   <Card
                     key={train.id}
                     onClick={() => onSelectTrain(train.id)}
-                    className={`cursor-pointer transition-all duration-150 border text-xs ${
+                    className={`cursor-pointer transition-all duration-150 border text-xs bg-white ${
                       isSelected
-                        ? 'bg-emerald-950/30 border-emerald-500/50 shadow-sm shadow-emerald-950'
-                        : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-950'
+                        ? 'border-blue-600 bg-blue-50/50 shadow-xs'
+                        : 'border-slate-800 hover:border-black hover:shadow-xs'
                     }`}
                   >
                     <CardContent className="p-3 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-white tracking-wide text-sm flex items-center gap-1.5">
-                          <TrainFront className="w-4 h-4 text-emerald-400" />
+                        <span className="font-bold text-slate-900 tracking-wide text-sm flex items-center gap-1.5">
+                          <TrainFront className="w-4 h-4 text-blue-600" />
                           {train.train_number}
                         </span>
                         <Badge
                           variant="outline"
                           className={
                             train.status === 'active'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : train.status === 'maintenance'
-                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-slate-100 text-slate-600 border-slate-200'
                           }
                         >
                           {train.status}
@@ -373,16 +373,16 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
                       </div>
 
                       {train.train_name && (
-                        <p className="text-slate-300 font-medium truncate">{train.train_name}</p>
+                        <p className="text-slate-600 font-medium truncate">{train.train_name}</p>
                       )}
 
-                      <div className="grid grid-cols-2 gap-1.5 text-[11px] text-slate-400 pt-1 border-t border-slate-800/60">
+                      <div className="grid grid-cols-2 gap-1.5 text-[11px] text-slate-500 pt-1 border-t border-slate-100">
                         <div>
-                          <span className="text-slate-500">Loco:</span>{' '}
+                          <span className="text-slate-400">Loco:</span>{' '}
                           {train.locomotive?.loco_number || 'Unassigned'}
                         </div>
                         <div>
-                          <span className="text-slate-500">Rake:</span>{' '}
+                          <span className="text-slate-400">Rake:</span>{' '}
                           {train.rake?.rake_id || 'Standard'}
                         </div>
                       </div>
@@ -406,44 +406,44 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
                   <Card
                     key={mov.id}
                     onClick={() => onSelectMovement(mov.id)}
-                    className={`cursor-pointer transition-all duration-150 border text-xs ${
+                    className={`cursor-pointer transition-all duration-150 border text-xs bg-white ${
                       isSelected
-                        ? 'bg-emerald-950/30 border-emerald-500/50 shadow-sm shadow-emerald-950'
-                        : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-950'
+                        ? 'bg-emerald-50/50 border-emerald-600 shadow-xs'
+                        : 'border-slate-800 hover:border-black hover:shadow-xs'
                     }`}
                   >
                     <CardContent className="p-3 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-white tracking-wide text-sm flex items-center gap-1.5">
-                          <TrainFront className="w-4 h-4 text-emerald-400" />
+                        <span className="font-bold text-slate-900 tracking-wide text-sm flex items-center gap-1.5">
+                          <TrainFront className="w-4 h-4 text-emerald-600" />
                           {mov.train?.train_number || 'Train'}
                         </span>
                         <Badge
                           variant="outline"
                           className={
                             mov.status === 'in_transit'
-                              ? 'bg-blue-500/10 text-blue-400 border-blue-500/30 animate-pulse'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200 animate-pulse'
                               : mov.status === 'completed'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-slate-100 text-slate-600 border-slate-200'
                           }
                         >
                           {mov.status}
                         </Badge>
                       </div>
 
-                      <div className="space-y-1 text-slate-300">
+                      <div className="space-y-1 text-slate-700 font-medium">
                         <div className="flex items-center gap-1.5 truncate">
-                          <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                          <span className="text-slate-400">From:</span> {mov.origin_station?.name}
+                          <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="text-slate-500 font-normal">From:</span> {mov.origin_station?.name}
                         </div>
                         <div className="flex items-center gap-1.5 truncate">
-                          <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                          <span className="text-slate-400">To:</span> {mov.destination_station?.name}
+                          <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span className="text-slate-500 font-normal">To:</span> {mov.destination_station?.name}
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/60">
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
                         <span>{mov.distance_km || 0} km</span>
                         <span>{mov.duration_minutes || 0} min</span>
                         <span>{mov.loco_pilot?.user?.full_name || 'Pilot'}</span>
@@ -464,7 +464,7 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={() => setIsAddStationOpen(true)}
-                className="w-full justify-center gap-2 border-dashed border-slate-700 hover:border-slate-500 bg-slate-950/40 text-slate-300 hover:text-white h-9 text-xs mb-2"
+                className="w-full justify-center gap-2 border-dashed border-slate-400 hover:border-slate-600 bg-white text-slate-700 hover:text-slate-900 h-9 text-xs mb-2 shadow-xs"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Add Railway Station / Yard
@@ -474,21 +474,21 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
             {stations.map((st) => (
               <div
                 key={st.id}
-                className="p-3 bg-slate-950/60 border border-slate-800 rounded-lg text-xs space-y-1.5"
+                className="p-3 bg-white border border-slate-800 rounded-lg text-xs space-y-1.5 shadow-xs"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="font-semibold text-slate-900 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-emerald-600" />
                     {st.name}
                   </span>
-                  <Badge variant="outline" className="text-[10px] text-slate-400 border-slate-700">
+                  <Badge variant="outline" className="text-[10px] text-slate-600 border-slate-300">
                     {st.station_type}
                   </Badge>
                 </div>
                 {st.station_code && (
-                  <p className="text-slate-400 text-[11px]">Code: {st.station_code}</p>
+                  <p className="text-slate-500 text-[11px]">Code: {st.station_code}</p>
                 )}
-                <div className="text-[11px] text-slate-500">
+                <div className="text-[11px] text-slate-400">
                   {st.lat?.toFixed(4)}, {st.lng?.toFixed(4)}
                 </div>
               </div>
@@ -505,7 +505,7 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={() => setIsAddLocoOpen(true)}
-                  className="flex-1 justify-center gap-1.5 border-dashed border-slate-700 hover:border-slate-500 bg-slate-950/40 text-slate-300 hover:text-white h-9 text-xs"
+                  className="flex-1 justify-center gap-1.5 border-dashed border-slate-400 hover:border-slate-600 bg-white text-slate-700 hover:text-slate-900 h-9 text-xs shadow-xs"
                   data-testid="add-loco-button"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -515,7 +515,7 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
                   variant="outline"
                   size="sm"
                   onClick={() => setIsAddPilotOpen(true)}
-                  className="flex-1 justify-center gap-1.5 border-dashed border-emerald-700/60 hover:border-emerald-500 bg-emerald-950/20 text-emerald-300 hover:text-white h-9 text-xs"
+                  className="flex-1 justify-center gap-1.5 border-dashed border-emerald-400 hover:border-emerald-600 bg-emerald-50/50 text-emerald-700 hover:text-emerald-900 h-9 text-xs shadow-xs"
                   data-testid="add-pilot-button"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
@@ -527,18 +527,18 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
             {locomotives.map((loco) => (
               <div
                 key={loco.id}
-                className="p-3 bg-slate-950/60 border border-slate-800 rounded-lg text-xs space-y-1.5"
+                className="p-3 bg-white border border-slate-800 rounded-lg text-xs space-y-1.5 shadow-xs"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="font-semibold text-slate-900 flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-amber-500" />
                     {loco.loco_number}
                   </span>
-                  <Badge variant="outline" className="text-[10px] text-slate-400 border-slate-700">
+                  <Badge variant="outline" className="text-[10px] text-slate-600 border-slate-300">
                     {loco.fuel_type}
                   </Badge>
                 </div>
-                <p className="text-slate-300 text-[11px]">{loco.loco_type}</p>
+                <p className="text-slate-700 text-[11px]">{loco.loco_type}</p>
                 <p className="text-slate-500 text-[11px]">Power: {loco.power_kw || 'N/A'} kW</p>
               </div>
             ))}
@@ -553,7 +553,7 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={() => setIsAddRakeOpen(true)}
-                className="w-full justify-center gap-2 border-dashed border-slate-700 hover:border-slate-500 bg-slate-950/40 text-slate-300 hover:text-white h-9 text-xs mb-2"
+                className="w-full justify-center gap-2 border-dashed border-slate-400 hover:border-slate-600 bg-white text-slate-700 hover:text-slate-900 h-9 text-xs mb-2 shadow-xs"
               >
                 <Plus className="w-3.5 h-3.5" />
                 Create Rake Composition
@@ -563,15 +563,15 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
             {rakes.map((rk) => (
               <div
                 key={rk.id}
-                className="p-3 bg-slate-950/60 border border-slate-800 rounded-lg text-xs space-y-1.5"
+                className="p-3 bg-white border border-slate-800 rounded-lg text-xs space-y-1.5 shadow-xs"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="font-semibold text-slate-900 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-blue-600" />
                     {rk.rake_id}
                   </span>
                 </div>
-                <p className="text-slate-400 text-[11px]">
+                <p className="text-slate-600 text-[11px]">
                   Coaches: {rk.composition?.[0]?.count || 12}
                 </p>
               </div>
@@ -587,7 +587,7 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={() => setIsAddPilotOpen(true)}
-                className="w-full justify-center gap-2 border-dashed border-emerald-700/60 hover:border-emerald-500 bg-emerald-950/20 text-emerald-300 hover:text-white h-9 text-xs mb-2"
+                className="w-full justify-center gap-2 border-dashed border-emerald-400 hover:border-emerald-600 bg-emerald-50/50 text-emerald-700 hover:text-emerald-900 h-9 text-xs mb-2 shadow-xs"
                 data-testid="add-pilot-button-tab"
               >
                 <UserPlus className="w-3.5 h-3.5" />
@@ -598,19 +598,19 @@ export const RailwaysSidebar: React.FC<RailwaysSidebarProps> = ({
             {locoPilots.map((p) => (
               <div
                 key={p.id}
-                className="p-3 bg-slate-950/60 border border-slate-800 rounded-lg text-xs space-y-1.5"
+                className="p-3 bg-white border border-slate-800 rounded-lg text-xs space-y-1.5 shadow-xs"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-white flex items-center gap-1.5">
-                    <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="font-semibold text-slate-900 flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
                     {p.user?.full_name || 'Loco Pilot'}
                   </span>
-                  <Badge variant="outline" className="text-[10px] text-slate-400 border-slate-700">
+                  <Badge variant="outline" className="text-[10px] text-slate-600 border-slate-300">
                     {p.status}
                   </Badge>
                 </div>
-                <p className="text-slate-400 text-[11px]">License: {p.license_number}</p>
-                <p className="text-slate-500 text-[11px]">{p.user?.email}</p>
+                <p className="text-slate-600 text-[11px]">License: {p.license_number}</p>
+                <p className="text-slate-400 text-[11px]">{p.user?.email}</p>
               </div>
             ))}
           </div>

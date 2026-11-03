@@ -132,7 +132,7 @@ export const CreateFlightMovementModal: React.FC<CreateFlightMovementModalProps>
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-      <Card className="w-full max-w-lg border-border bg-card shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+      <Card className="w-full max-w-lg border-slate-800 bg-white shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
         <form onSubmit={handleSubmit}>
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-border bg-sky-500/5">

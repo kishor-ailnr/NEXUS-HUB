@@ -134,7 +134,7 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
   return (
     <div className="space-y-4" data-testid="roadways-sidebar">
       {/* Sidebar Header & Search */}
-      <Card className="border-slate-200 shadow-sm bg-white">
+      <Card className="border-slate-800 shadow-sm bg-white">
         <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
           <div className="flex items-center gap-2">
             <Truck className="w-5 h-5 text-blue-600" />
@@ -195,8 +195,8 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
                     onClick={() => onSelectVehicle(v)}
                     className={`p-3 rounded-lg border text-xs cursor-pointer transition-all ${
                       isSelected
-                        ? 'border-blue-500 bg-blue-50/50 shadow-sm'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                        ? 'border-blue-600 bg-blue-50/50 shadow-sm ring-1 ring-blue-500'
+                        : 'border-slate-800/80 hover:border-black bg-white'
                     }`}
                     data-testid={`vehicle-card-${v.id}`}
                   >

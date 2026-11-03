@@ -62,8 +62,8 @@ export const SeawaysMap: React.FC<SeawaysMapProps> = ({
       zoomControl: true,
     });
 
-    // Dark base map layer (CartoDB Dark Matter)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // Light base map layer (CartoDB Positron)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
       maxZoom: 19,
     }).addTo(map);
@@ -91,7 +91,7 @@ export const SeawaysMap: React.FC<SeawaysMapProps> = ({
       if (port.lat === null || port.lng === null || port.lat === undefined || port.lng === undefined) return;
 
       const portIconHtml = `
-        <div class="relative flex items-center justify-center w-6 h-6 rounded-full bg-cyan-950 border border-cyan-400 text-cyan-300 shadow-lg cursor-pointer hover:scale-110 transition-transform">
+        <div class="relative flex items-center justify-center w-6 h-6 rounded-full bg-cyan-50 border border-cyan-500 text-cyan-700 shadow-md cursor-pointer hover:scale-110 transition-transform">
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="5" r="3"></circle>
             <line x1="12" y1="22" x2="12" y2="8"></line>
@@ -404,35 +404,35 @@ export const SeawaysMap: React.FC<SeawaysMapProps> = ({
   }, [vessels, movements, liveTelemetry, selectedVesselId, selectedMovement, convoys, onSelectMovement]);
 
   return (
-    <div className="relative w-full h-full bg-slate-950 overflow-hidden">
+    <div className="relative w-full h-full bg-slate-50 overflow-hidden">
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-      {/* Map Legend Overlay */}
-      <div className="absolute top-4 right-4 z-10 bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-lg p-3 text-xs text-slate-300 space-y-2 shadow-xl pointer-events-auto">
-        <div className="font-semibold text-slate-100 flex items-center gap-1.5 border-b border-slate-800 pb-1.5">
-          <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+      {/* Map Legend Overlay - positioned at top-3 left-14 so it does not overlap right sidebars */}
+      <div className="absolute top-3 left-14 z-10 bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-xl p-3 text-xs text-slate-700 space-y-2 shadow-xs pointer-events-auto">
+        <div className="font-bold text-slate-900 flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
+          <span className="w-2 h-2 rounded-full bg-cyan-600"></span>
           Maritime Navigation Map
         </div>
         <div className="space-y-1.5 text-[11px]">
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-blue-600 border border-sky-300"></span>
-            <span>Active Vessel (In-Transit)</span>
+            <span className="text-slate-600">Active Vessel (In-Transit)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-cyan-950 border border-cyan-400"></span>
-            <span>Coastal Port (UN/LOCODE)</span>
+            <span className="w-3 h-3 rounded-full bg-cyan-50 border border-cyan-500"></span>
+            <span className="text-slate-600">Coastal Port (UN/LOCODE)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-4 h-0.5 bg-sky-400"></span>
-            <span>Land-Avoiding Sea Route (searoute)</span>
+            <span className="w-4 h-0.5 bg-sky-500"></span>
+            <span className="text-slate-600">Land-Avoiding Sea Route</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full border-2 border-dashed border-cyan-400 bg-cyan-950/80"></span>
-            <span>Digital Twin Ghost Position</span>
+            <span className="w-3 h-3 rounded-full border-2 border-dashed border-cyan-500 bg-cyan-50"></span>
+            <span className="text-slate-600">Digital Twin Ghost Position</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full border border-dashed border-cyan-400 bg-cyan-500/20"></span>
-            <span>Convoy Group Member</span>
+            <span className="w-3 h-3 rounded-full border border-dashed border-cyan-500 bg-cyan-100"></span>
+            <span className="text-slate-600">Convoy Group Member</span>
           </div>
         </div>
       </div>

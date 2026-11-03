@@ -73,7 +73,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
           />
 
           <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-            <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between">
+            <div className="w-screen max-w-md bg-white border-l border-slate-800 shadow-2xl flex flex-col justify-between">
               {/* Header */}
               <div className="p-4 sm:p-6 border-b border-slate-200 flex items-center justify-between bg-slate-50">
                 <div className="flex items-center gap-2">
@@ -112,8 +112,8 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                       key={item.id}
                       className={`p-4 rounded-xl border transition-all ${
                         item.readAt
-                          ? 'bg-slate-50/60 border-slate-200 opacity-80'
-                          : 'bg-white border-blue-200 shadow-sm ring-1 ring-blue-100'
+                          ? 'bg-slate-50/60 border-slate-800/60 opacity-80'
+                          : 'bg-white border-slate-800 shadow-sm'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2 mb-1.5">

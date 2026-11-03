@@ -29,7 +29,7 @@ export const VehicleSidebarPlaceholder: React.FC<VehicleSidebarPlaceholderProps>
         </div>
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
-        <div className="p-4 bg-white rounded-xl border border-slate-200 text-center space-y-2">
+        <div className="p-4 bg-white rounded-xl border border-slate-800 text-center space-y-2">
           <div className="w-10 h-10 mx-auto rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
             <Sparkles className="w-5 h-5" />
           </div>

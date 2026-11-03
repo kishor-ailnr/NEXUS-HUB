@@ -129,22 +129,23 @@ export const CreateVoyageMovementModal: React.FC<CreateVoyageMovementModalProps>
   const selectedDest = ports.find((p) => p.id === destinationPortId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+      <div className="bg-white border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh] text-slate-800">
         {/* Header */}
-        <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-gradient-to-r from-blue-950/40 via-slate-900 to-slate-900">
+        <div className="p-5 border-b border-slate-200/80 flex items-center justify-between bg-white">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl border border-blue-500/30">
+            <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
               <Ship className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-100">Dispatch Voyage Movement</h2>
-              <p className="text-xs text-slate-400">Land-Avoiding Sea Routing & Maritime Telemetry</p>
+              <h2 className="text-base font-bold text-slate-900">Dispatch Voyage Movement</h2>
+              <p className="text-xs text-slate-500">Land-Avoiding Sea Routing & Maritime Telemetry</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            aria-label="Close voyage dispatch modal"
           >
             <X className="w-5 h-5" />
           </button>
@@ -154,11 +155,11 @@ export const CreateVoyageMovementModal: React.FC<CreateVoyageMovementModalProps>
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
           {/* Voyage Number */}
           <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-slate-300">Voyage Call Sign / Number</Label>
+            <Label className="text-xs font-semibold text-slate-700">Voyage Call Sign / Number</Label>
             <input
               type="text"
               required
-              className="w-full h-9 bg-slate-950 border border-slate-700 rounded-lg px-3 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+              className="w-full h-9 bg-white border border-slate-200 rounded-lg px-3 text-xs text-slate-900 shadow-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
               value={voyageNumber}
               onChange={(e) => setVoyageNumber(e.target.value)}
               placeholder="e.g. VOY-104"
@@ -168,12 +169,12 @@ export const CreateVoyageMovementModal: React.FC<CreateVoyageMovementModalProps>
           {/* Origin & Destination Ports */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                <Anchor className="w-3.5 h-3.5 text-cyan-400" />
+              <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                <Anchor className="w-3.5 h-3.5 text-cyan-600" />
                 Origin Port
               </Label>
               <select
-                className="w-full h-9 bg-slate-950 border border-slate-700 rounded-lg px-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                className="w-full h-9 bg-white border border-slate-200 rounded-lg px-2 text-xs text-slate-900 shadow-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                 value={originPortId}
                 onChange={(e) => setOriginPortId(e.target.value)}
               >
@@ -186,12 +187,12 @@ export const CreateVoyageMovementModal: React.FC<CreateVoyageMovementModalProps>
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                <Anchor className="w-3.5 h-3.5 text-cyan-400" />
+              <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                <Anchor className="w-3.5 h-3.5 text-cyan-600" />
                 Destination Port
               </Label>
               <select
-                className="w-full h-9 bg-slate-950 border border-slate-700 rounded-lg px-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                className="w-full h-9 bg-white border border-slate-200 rounded-lg px-2 text-xs text-slate-900 shadow-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                 value={destinationPortId}
                 onChange={(e) => setDestinationPortId(e.target.value)}
               >
@@ -206,38 +207,37 @@ export const CreateVoyageMovementModal: React.FC<CreateVoyageMovementModalProps>
 
           {/* Port Berth Slot Intelligence Card */}
           {isCheckingSlot && (
-            <div className="p-2.5 rounded-lg border border-slate-800 bg-slate-950/40 text-xs text-slate-400 flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+            <div className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-600 flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
               <span>Analyzing Port Berth & Fairway Traffic Density...</span>
             </div>
           )}
 
           {slotCheck && !isCheckingSlot && (
             <div
-              className={`p-3 rounded-lg border text-xs space-y-1.5 ${
-                slotCheck.congested
-                  ? 'border-amber-500/30 bg-amber-950/20 text-amber-200'
-                  : 'border-emerald-500/30 bg-emerald-950/20 text-emerald-200'
-              }`}
+              className={`p-3 rounded-xl border text-xs space-y-1.5 ${slotCheck.congested
+                ? 'border-amber-200 bg-amber-50 text-amber-900'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                }`}
             >
               <div className="flex items-center justify-between font-semibold">
                 <span className="flex items-center gap-1.5">
                   {slotCheck.congested ? (
-                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
                   ) : (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   )}
                   {slotCheck.congested ? 'Port Berth Congestion Alert' : 'Berth & Fairway Slots Available'}
                 </span>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/40">
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
                   {slotCheck.originSlotCount} dep / {slotCheck.destinationSlotCount} arr ops
                 </span>
               </div>
-              <p className="text-[11px] text-slate-300">
+              <p className="text-[11px] text-slate-600">
                 {slotCheck.reason || 'Sufficient berth capacity and fairway clearance at both ports.'}
               </p>
               {slotCheck.suggestedDeparture && (
-                <div className="text-[11px] text-amber-300 font-mono pt-1 border-t border-amber-500/20">
+                <div className="text-[11px] text-amber-800 font-mono pt-1 border-t border-amber-200">
                   Suggested Clear Slot: {new Date(slotCheck.suggestedDeparture).toLocaleTimeString()}
                 </div>
               )}
@@ -246,14 +246,14 @@ export const CreateVoyageMovementModal: React.FC<CreateVoyageMovementModalProps>
 
           {/* Land-Avoiding Marine Route Banner */}
           {selectedOrigin && selectedDest && selectedOrigin.id !== selectedDest.id && (
-            <div className="p-3 rounded-lg border border-sky-500/30 bg-sky-950/20 text-xs text-sky-200 space-y-1">
-              <div className="flex items-center gap-1.5 font-semibold text-sky-400">
-                <Compass className="w-3.5 h-3.5" />
+            <div className="p-3 rounded-xl border border-sky-200 bg-sky-50 text-xs text-sky-900 space-y-1">
+              <div className="flex items-center gap-1.5 font-semibold text-sky-700">
+                <Compass className="w-3.5 h-3.5 text-sky-600" />
                 Land-Avoiding Maritime Routing Active
               </div>
-              <div className="text-[11px] text-slate-300">
-                Route: <span className="text-white">{selectedOrigin.name}</span> →{' '}
-                <span className="text-white">{selectedDest.name}</span> via verified open-water shipping lanes
+              <div className="text-[11px] text-slate-600">
+                Route: <span className="text-slate-900 font-semibold">{selectedOrigin.name}</span> →{' '}
+                <span className="text-slate-900 font-semibold">{selectedDest.name}</span> via verified open-water shipping lanes
                 (avoids peninsular land crossing around Cape Comorin / Sri Lanka TSS).
               </div>
             </div>
@@ -262,9 +262,9 @@ export const CreateVoyageMovementModal: React.FC<CreateVoyageMovementModalProps>
           {/* Vessel & Master Select */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-300">Vessel</Label>
+              <Label className="text-xs font-semibold text-slate-700">Vessel</Label>
               <select
-                className="w-full h-9 bg-slate-950 border border-slate-700 rounded-lg px-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                className="w-full h-9 bg-white border border-slate-200 rounded-lg px-2 text-xs text-slate-900 shadow-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                 value={selectedVesselId}
                 onChange={(e) => setSelectedVesselId(e.target.value)}
               >
@@ -277,9 +277,9 @@ export const CreateVoyageMovementModal: React.FC<CreateVoyageMovementModalProps>
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-300">Master / Captain</Label>
+              <Label className="text-xs font-semibold text-slate-700">Master / Captain</Label>
               <select
-                className="w-full h-9 bg-slate-950 border border-slate-700 rounded-lg px-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                className="w-full h-9 bg-white border border-slate-200 rounded-lg px-2 text-xs text-slate-900 shadow-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                 value={selectedMasterId}
                 onChange={(e) => setSelectedMasterId(e.target.value)}
               >
@@ -293,17 +293,17 @@ export const CreateVoyageMovementModal: React.FC<CreateVoyageMovementModalProps>
           </div>
 
           {/* Simulation Speed Multiplier */}
-          <div className="space-y-2 pt-2 border-t border-slate-800">
+          <div className="space-y-2 pt-2 border-t border-slate-100">
             <div className="flex justify-between text-xs">
-              <span className="font-semibold text-slate-300">Simulation Speed Multiplier</span>
-              <span className="text-blue-400 font-bold">{speedMultiplier}x Realtime</span>
+              <span className="font-semibold text-slate-700">Simulation Speed Multiplier</span>
+              <span className="text-blue-700 font-bold">{speedMultiplier}x Realtime</span>
             </div>
             <input
               type="range"
               min="1"
               max="120"
               step="5"
-              className="w-full accent-blue-500 cursor-pointer"
+              className="w-full accent-blue-600 cursor-pointer"
               value={speedMultiplier}
               onChange={(e) => setSpeedMultiplier(Number(e.target.value))}
             />
@@ -316,7 +316,7 @@ export const CreateVoyageMovementModal: React.FC<CreateVoyageMovementModalProps>
 
           {/* Auto-dispatch checkbox */}
           <div className="pt-2">
-            <label className="flex items-center gap-2.5 cursor-pointer text-xs text-slate-300">
+            <label className="flex items-center gap-2.5 cursor-pointer text-xs text-slate-700">
               <input
                 type="checkbox"
                 checked={autoDispatch}
@@ -328,14 +328,14 @@ export const CreateVoyageMovementModal: React.FC<CreateVoyageMovementModalProps>
           </div>
 
           {/* Submit Actions */}
-          <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-800">
+          <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={onClose}
               disabled={isSubmitting}
-              className="text-xs text-slate-400 hover:text-slate-100"
+              className="text-xs text-slate-700 hover:text-slate-900 border-slate-200"
             >
               Cancel
             </Button>

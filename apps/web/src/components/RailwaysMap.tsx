@@ -47,8 +47,8 @@ export const RailwaysMap: React.FC<RailwaysMapProps> = ({
       zoomControl: true,
     });
 
-    // Dark base map layer (CartoDB Dark Matter)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // Light base map layer (CartoDB Positron)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
       maxZoom: 19,
     }).addTo(map);
@@ -310,46 +310,46 @@ export const RailwaysMap: React.FC<RailwaysMapProps> = ({
   }, [movements, liveTelemetry, selectedMovement, selectedTrainId, onSelectMovement]);
 
   return (
-    <div className="relative w-full h-full bg-slate-950">
+    <div className="relative w-full h-full bg-slate-50">
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-      {/* Map Overlay Badges & Controls */}
-      <div className="absolute top-4 right-4 z-10 flex flex-col gap-2 pointer-events-none">
-        <div className="bg-slate-900/90 border border-slate-800 backdrop-blur-md px-3 py-2 rounded-lg shadow-xl pointer-events-auto flex items-center gap-3 text-xs">
+      {/* Map Overlay Badges & Controls - positioned at top-3 left-14 so it does not overlap right sidebars */}
+      <div className="absolute top-3 left-14 z-10 flex flex-col gap-2 pointer-events-none">
+        <div className="bg-white/95 border border-slate-200/90 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-xs pointer-events-auto flex items-center gap-2.5 text-xs">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-            <span className="font-semibold text-white">OpenRailwayMap Real Track Overlay</span>
+            <span className="font-semibold text-slate-900">OpenRailwayMap Real Track Overlay</span>
           </div>
-          <Badge variant="outline" className="text-[10px] bg-slate-950 border-slate-700 text-slate-300">
+          <Badge variant="outline" className="text-[10px] bg-slate-50 border-slate-200 text-slate-600">
             Active
           </Badge>
         </div>
 
         {selectedMovement && (
-          <div className="bg-slate-900/90 border border-slate-800 backdrop-blur-md p-3 rounded-lg shadow-xl pointer-events-auto text-xs space-y-1.5 max-w-xs">
+          <div className="bg-white/95 border border-slate-200/90 backdrop-blur-md p-3 rounded-xl shadow-sm pointer-events-auto text-xs space-y-1.5 max-w-xs">
             <div className="flex items-center justify-between">
-              <span className="font-bold text-white flex items-center gap-1.5">
-                <TrainFront className="w-4 h-4 text-emerald-400" />
+              <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                <TrainFront className="w-4 h-4 text-emerald-600" />
                 {selectedMovement.train?.train_number}
               </span>
               <Badge
                 variant="outline"
                 className={
                   selectedMovement.route_geometry?.routing_source === 'overpass'
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                    : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
                 }
               >
                 {selectedMovement.route_geometry?.routing_source || 'overpass'}
               </Badge>
             </div>
-            <p className="text-slate-400 text-[11px]">
+            <p className="text-slate-500 text-[11px]">
               {selectedMovement.origin_station?.name} → {selectedMovement.destination_station?.name}
             </p>
-            <div className="flex items-center justify-between text-slate-400 text-[11px] pt-1 border-t border-slate-800">
+            <div className="flex items-center justify-between text-slate-500 text-[11px] pt-1 border-t border-slate-100">
               <span>{selectedMovement.distance_km} km</span>
               <span>{selectedMovement.duration_minutes} min</span>
-              <span className="text-emerald-400 font-medium">
+              <span className="text-emerald-700 font-semibold">
                 {liveTelemetry[selectedMovement.id]?.speedKmh ?? 75} km/h
               </span>
             </div>

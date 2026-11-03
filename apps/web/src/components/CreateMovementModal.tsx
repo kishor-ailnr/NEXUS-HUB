@@ -126,16 +126,17 @@ export const CreateMovementModal: React.FC<CreateMovementModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col text-slate-100 max-h-[90vh]">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-white flex items-center gap-2">
-            <TrainFront className="w-5 h-5 text-emerald-400" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-white border border-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col text-slate-800 max-h-[90vh]">
+        <div className="p-4 border-b border-slate-200/80 bg-white flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <TrainFront className="w-5 h-5 text-blue-600" />
             Dispatch Train Movement
           </h2>
           <button
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+            aria-label="Close dispatch modal"
           >
             <X className="w-5 h-5" />
           </button>
@@ -144,16 +145,16 @@ export const CreateMovementModal: React.FC<CreateMovementModalProps> = ({
         <form onSubmit={handleSubmit} className="p-4 space-y-4 text-xs overflow-y-auto">
           {/* Saved Route Match Banner */}
           {matchingSavedRoute && (
-            <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-lg flex items-start gap-2.5">
-              <History className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-2.5">
+              <History className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-emerald-300">Cached Rail Geometry Found</span>
-                  <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+                  <span className="font-semibold text-emerald-900">Cached Rail Geometry Found</span>
+                  <Badge variant="outline" className="text-[10px] bg-emerald-100 text-emerald-800 border-emerald-300">
                     {matchingSavedRoute.routing_source}
                   </Badge>
                 </div>
-                <p className="text-slate-300 text-[11px]">
+                <p className="text-emerald-700 text-[11px]">
                   Estimated: {matchingSavedRoute.route_geometry?.distance_km} km (Used {matchingSavedRoute.usage_count} times)
                 </p>
               </div>
@@ -163,16 +164,16 @@ export const CreateMovementModal: React.FC<CreateMovementModalProps> = ({
           {/* Slot Intelligence Banner */}
           {slotStatus && (
             <div
-              className={`p-3 rounded-lg border flex items-start gap-2.5 ${
+              className={`p-3 rounded-xl border flex items-start gap-2.5 ${
                 slotStatus.congested
-                  ? 'bg-amber-950/40 border-amber-500/50 text-amber-200'
-                  : 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
+                  ? 'bg-amber-50 border-amber-200 text-amber-900'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-900'
               }`}
             >
               {slotStatus.congested ? (
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               ) : (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               )}
               <div className="space-y-1.5 flex-1">
                 <div className="flex items-center justify-between">
@@ -183,17 +184,17 @@ export const CreateMovementModal: React.FC<CreateMovementModalProps> = ({
                     variant="outline"
                     className={`text-[10px] ${
                       slotStatus.congested
-                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                        : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                        ? 'bg-amber-100 text-amber-800 border-amber-300'
+                        : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                     }`}
                   >
                     {slotStatus.overlapCount} movement(s) active
                   </Badge>
                 </div>
-                <p className="text-[11px] leading-relaxed opacity-90">{slotStatus.reason}</p>
+                <p className="text-[11px] leading-relaxed text-slate-700">{slotStatus.reason}</p>
                 {slotStatus.congested && slotStatus.suggestedDeparture && (
-                  <div className="pt-1 flex items-center justify-between gap-2 border-t border-amber-500/20">
-                    <span className="text-[10.5px] text-amber-300">
+                  <div className="pt-1 flex items-center justify-between gap-2 border-t border-amber-200">
+                    <span className="text-[10.5px] text-amber-800">
                       Suggested Slot: <strong>{new Date(slotStatus.suggestedDeparture).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>
                     </span>
                     <Button
@@ -201,7 +202,7 @@ export const CreateMovementModal: React.FC<CreateMovementModalProps> = ({
                       size="sm"
                       variant="outline"
                       onClick={() => handleApplySuggestedSlot(slotStatus.suggestedDeparture!)}
-                      className="h-6 text-[10px] bg-amber-500/20 text-amber-200 border-amber-500/40 hover:bg-amber-500/30"
+                      className="h-6 text-[10px] bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200"
                     >
                       Apply Suggested Slot
                     </Button>
@@ -213,12 +214,12 @@ export const CreateMovementModal: React.FC<CreateMovementModalProps> = ({
 
           {/* Train Selection */}
           <div className="space-y-1.5">
-            <Label>Train Service</Label>
+            <Label className="text-slate-700 font-semibold">Train Service</Label>
             <select
               required
               value={selectedTrainId}
               onChange={(e) => setSelectedTrainId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-md p-2.5 text-white text-xs"
+              className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900 text-xs shadow-xs focus:ring-1 focus:ring-blue-500"
             >
               <option value="">Select Train Composition</option>
               {trains.map((t) => (
@@ -231,12 +232,12 @@ export const CreateMovementModal: React.FC<CreateMovementModalProps> = ({
 
           {/* Loco Pilot Selection */}
           <div className="space-y-1.5">
-            <Label>Loco Pilot (Crew)</Label>
+            <Label className="text-slate-700 font-semibold">Loco Pilot (Crew)</Label>
             <select
               required
               value={selectedPilotId}
               onChange={(e) => setSelectedPilotId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-md p-2.5 text-white text-xs"
+              className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900 text-xs shadow-xs focus:ring-1 focus:ring-blue-500"
             >
               <option value="">Assign Loco Pilot</option>
               {locoPilots.map((p) => (
@@ -250,15 +251,15 @@ export const CreateMovementModal: React.FC<CreateMovementModalProps> = ({
           {/* Station Pair */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5 text-emerald-400">
-                <MapPin className="w-3.5 h-3.5" />
+              <Label className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+                <MapPin className="w-3.5 h-3.5 text-emerald-600" />
                 Origin Station
               </Label>
               <select
                 required
                 value={originStationId}
                 onChange={(e) => setOriginStationId(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-md p-2.5 text-white text-xs"
+                className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900 text-xs shadow-xs focus:ring-1 focus:ring-blue-500"
               >
                 <option value="">Select Origin</option>
                 {stations.map((s) => (
@@ -270,15 +271,15 @@ export const CreateMovementModal: React.FC<CreateMovementModalProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5 text-amber-400">
-                <MapPin className="w-3.5 h-3.5" />
+              <Label className="flex items-center gap-1.5 text-amber-700 font-semibold">
+                <MapPin className="w-3.5 h-3.5 text-amber-600" />
                 Destination Station
               </Label>
               <select
                 required
                 value={destinationStationId}
                 onChange={(e) => setDestinationStationId(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-md p-2.5 text-white text-xs"
+                className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900 text-xs shadow-xs focus:ring-1 focus:ring-blue-500"
               >
                 <option value="">Select Destination</option>
                 {stations.map((s) => (
@@ -292,23 +293,23 @@ export const CreateMovementModal: React.FC<CreateMovementModalProps> = ({
 
           {/* Proposed Departure Time */}
           <div className="space-y-1.5">
-            <Label className="flex items-center gap-1.5 text-cyan-400">
-              <Clock className="w-3.5 h-3.5" />
+            <Label className="flex items-center gap-1.5 text-slate-700 font-semibold">
+              <Clock className="w-3.5 h-3.5 text-blue-600" />
               Proposed Departure Slot
             </Label>
             <input
               type="datetime-local"
               value={proposedDeparture}
               onChange={(e) => setProposedDeparture(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-md p-2.5 text-white text-xs"
+              className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-slate-900 text-xs shadow-xs focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
           {/* Simulation Speed */}
           <div className="space-y-1.5 pt-1">
             <div className="flex items-center justify-between">
-              <Label>Live Simulation Speed Multiplier</Label>
-              <span className="font-bold text-emerald-400">{speedMultiplier}x</span>
+              <Label className="text-slate-700 font-semibold">Live Simulation Speed Multiplier</Label>
+              <span className="font-bold text-emerald-700">{speedMultiplier}x</span>
             </div>
             <input
               type="range"
@@ -317,7 +318,7 @@ export const CreateMovementModal: React.FC<CreateMovementModalProps> = ({
               step={10}
               value={speedMultiplier}
               onChange={(e) => setSpeedMultiplier(Number(e.target.value))}
-              className="w-full accent-emerald-500 cursor-pointer"
+              className="w-full accent-emerald-600 cursor-pointer"
             />
             <p className="text-[11px] text-slate-500">
               60x: 1 minute of real time simulates 1 hour of train progress along the track geometry.
@@ -325,14 +326,14 @@ export const CreateMovementModal: React.FC<CreateMovementModalProps> = ({
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-xs"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
               {isSubmitting ? 'Routing & Dispatching...' : 'Dispatch Movement'}

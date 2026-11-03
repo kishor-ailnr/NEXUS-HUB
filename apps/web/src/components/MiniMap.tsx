@@ -48,9 +48,9 @@ export const MiniMap: React.FC<MiniMapProps> = ({
 
         const customIcon = L.divIcon({
           className: 'custom-pin',
-          html: `<div style="background-color: #0f172a; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #38bdf8; box-shadow: 0 0 6px rgba(56,189,248,0.8);"></div>`,
-          iconSize: [14, 14],
-          iconAnchor: [7, 7],
+          html: `<div style="background-color: #2563eb; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 0 8px rgba(37,99,235,0.7);"></div>`,
+          iconSize: [12, 12],
+          iconAnchor: [6, 6],
         });
 
         L.marker([latitude!, longitude!], { icon: customIcon })
@@ -82,27 +82,26 @@ export const MiniMap: React.FC<MiniMapProps> = ({
   if (!hasCoordinates) {
     return (
       <div
-        className={`w-36 h-20 sm:w-44 sm:h-24 bg-slate-100 border border-dashed border-slate-300 rounded-lg flex flex-col items-center justify-center p-2 text-center select-none ${className}`}
+        className={`h-9 px-2.5 bg-slate-50 border border-slate-800 rounded-lg flex items-center justify-center gap-1.5 text-center select-none text-[10px] text-slate-600 ${className}`}
         data-testid="location-placeholder"
       >
-        <MapPinOff className="w-5 h-5 text-slate-400 mb-1" />
-        <span className="text-[10px] font-semibold text-slate-600 leading-tight">
-          Location not yet available
-        </span>
+        <MapPinOff className="w-3.5 h-3.5 text-slate-400" />
+        <span className="font-semibold text-slate-600 leading-tight">Location not yet available</span>
       </div>
     );
   }
 
   return (
     <div
-      className={`w-36 h-20 sm:w-44 sm:h-24 rounded-lg overflow-hidden border border-slate-300 shadow-inner relative z-0 ${className}`}
+      className={`h-9 w-32 xl:w-36 rounded-lg overflow-hidden border border-slate-800 shadow-xs relative z-0 bg-slate-100 flex-shrink-0 ${className}`}
       data-testid="mini-map"
+      title={`HQ Location: ${latitude?.toFixed(3)}, ${longitude?.toFixed(3)}`}
     >
       <div ref={mapContainerRef} className="w-full h-full" style={{ width: '100%', height: '100%' }} />
-      <div className="absolute bottom-1 right-1 z-[400] bg-navy/80 backdrop-blur-sm px-1.5 py-0.5 rounded text-[9px] text-white flex items-center gap-1 font-mono">
-        <MapPin className="w-2.5 h-2.5 text-blue-400" />
+      <div className="absolute bottom-0.5 right-1 z-[400] bg-white/90 backdrop-blur-xs px-1 py-0.2 rounded border border-slate-800 text-[9px] text-slate-700 flex items-center gap-0.5 font-mono shadow-xs">
+        <MapPin className="w-2.5 h-2.5 text-blue-600" />
         <span>
-          {latitude?.toFixed(2)}, {longitude?.toFixed(2)}
+          {latitude?.toFixed(1)},{longitude?.toFixed(1)}
         </span>
       </div>
     </div>

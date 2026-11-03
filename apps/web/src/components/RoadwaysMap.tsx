@@ -346,23 +346,23 @@ export const RoadwaysMap: React.FC<RoadwaysMapProps> = ({
 
   return (
     <div
-      className={`relative w-full h-[520px] min-h-[520px] rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-slate-100 ${className}`}
+      className={`relative w-full h-[550px] min-h-[550px] rounded-xl overflow-hidden border border-slate-200/90 shadow-xs bg-slate-50 ${className}`}
       data-testid="roadways-live-map"
     >
-      <div ref={mapContainerRef} className="w-full h-full min-h-[520px] z-0" style={{ width: '100%', height: '100%' }} />
+      <div ref={mapContainerRef} className="w-full h-full min-h-[550px] z-0" style={{ width: '100%', height: '100%' }} />
 
-      {/* Floating Simulation Engine Badge */}
-      <div className="absolute top-3 right-3 z-[400] bg-slate-900/90 backdrop-blur-md text-white px-3 py-1.5 rounded-lg shadow-lg border border-slate-700/50 flex items-center gap-2 text-xs font-medium">
+      {/* Floating Simulation Engine Badge - Positioned at top-left next to controls to NEVER overlap the sidebar */}
+      <div className="absolute top-3 left-14 z-10 bg-white/95 backdrop-blur-md text-slate-800 px-3 py-1.5 rounded-lg shadow-sm border border-slate-200/90 flex items-center gap-2 text-xs font-medium">
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
           <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
         </span>
-        <span className="font-semibold text-emerald-400">Roadways Live Simulation</span>
-        <span className="text-[10px] text-slate-400 border-l border-slate-700 pl-2">OSRM + Telemetry</span>
+        <span className="font-semibold text-emerald-700">Roadways Live Simulation</span>
+        <span className="text-[10px] text-slate-500 border-l border-slate-200 pl-2 font-mono">OSRM + Telemetry</span>
       </div>
 
       {/* Floating Legend */}
-      <div className="absolute bottom-3 left-3 z-[400] bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-md border border-slate-200 text-[11px] text-slate-700 flex flex-wrap items-center gap-3">
+      <div className="absolute bottom-3 left-3 z-10 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-sm border border-slate-200/90 text-[11px] text-slate-700 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
           <span>Live Vehicle</span>

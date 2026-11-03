@@ -239,13 +239,13 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
   );
 
   return (
-    <aside className="w-80 border-r border-border bg-card/60 backdrop-blur flex flex-col h-full select-none" data-testid="airways-sidebar">
+    <aside className="w-80 border-r border-slate-800 bg-white/95 backdrop-blur-md flex flex-col h-full select-none" data-testid="airways-sidebar">
       {/* Header & Search */}
-      <div className="p-4 border-b border-border space-y-3">
+      <div className="p-4 border-b border-slate-200/80 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Plane className="h-5 w-5 text-sky-500" />
-            <span className="font-semibold text-sm tracking-wide text-foreground">
+            <Plane className="h-5 w-5 text-sky-600" />
+            <span className="font-bold text-sm tracking-tight text-slate-900">
               Airways Fleet & Flights
             </span>
           </div>
@@ -253,7 +253,7 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
             <Button
               size="sm"
               onClick={onOpenCreateMovement}
-              className="h-8 gap-1 text-xs bg-sky-600 hover:bg-sky-500 text-white"
+              className="h-8 gap-1 text-xs bg-sky-600 hover:bg-sky-700 text-white shadow-xs"
             >
               <Plus className="h-3.5 w-3.5" />
               Dispatch
@@ -262,12 +262,12 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
         </div>
 
         <div className="relative">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
           <Input
             placeholder="Search flights, aircraft, airports..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-8 h-9 text-xs"
+            className="pl-8 h-9 text-xs bg-white border-slate-200 text-slate-900 placeholder:text-slate-400"
           />
         </div>
 
@@ -277,10 +277,10 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-2.5 py-1 rounded-md text-xs font-medium capitalize whitespace-nowrap transition-colors ${
+              className={`px-2.5 py-1 rounded-lg text-xs capitalize whitespace-nowrap transition-colors ${
                 activeTab === tab
-                  ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                  : 'text-muted-foreground hover:bg-muted/50'
+                  ? 'bg-sky-50 text-sky-700 border border-sky-300 font-semibold shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100/70 border border-transparent'
               }`}
             >
               {tab}
@@ -316,15 +316,15 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
                     onClick={() => onSelectMovement(movement.id)}
                     className={`cursor-pointer transition-all border ${
                       isSelected
-                        ? 'border-sky-500 bg-sky-500/10'
-                        : 'border-border/60 hover:border-border bg-card/40'
+                        ? 'border-sky-600 bg-sky-50 shadow-xs ring-1 ring-sky-500/30'
+                        : 'border-slate-800 hover:border-black bg-white shadow-xs'
                     }`}
                   >
                     <CardContent className="p-3 space-y-1.5">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
-                          <Plane className={`h-4 w-4 ${isTransit ? 'text-sky-400 animate-pulse' : 'text-muted-foreground'}`} />
-                          <span className="font-medium text-xs text-foreground">
+                          <Plane className={`h-4 w-4 ${isTransit ? 'text-sky-600 animate-pulse' : 'text-slate-500'}`} />
+                          <span className="font-semibold text-xs text-slate-900">
                             {movement.flight?.flight_number || 'Flight'}
                           </span>
                         </div>
@@ -342,12 +342,12 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
                         </Badge>
                       </div>
 
-                      <div className="text-[11px] text-muted-foreground truncate">
+                      <div className="text-[11px] text-slate-600 truncate">
                         {movement.flight?.origin_airport?.name || 'Origin'} &rarr;{' '}
                         {movement.flight?.destination_airport?.name || 'Destination'}
                       </div>
 
-                      <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40">
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-100">
                         <span>Tail: {movement.aircraft?.tail_number || 'N/A'}</span>
                         <span>Pilot: {movement.pilot?.user?.full_name || 'N/A'}</span>
                       </div>
@@ -363,7 +363,7 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
         {activeTab === 'aircraft' && (
           <div className="space-y-2">
             <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-medium text-muted-foreground">
+              <span className="text-xs font-medium text-slate-500">
                 Aircraft Fleet ({filteredAircraft.length})
               </span>
               {isManager && (
@@ -372,7 +372,7 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
                     size="sm"
                     variant="ghost"
                     onClick={() => setIsAddCrewOpen(true)}
-                    className="h-6 px-2 text-[11px] text-emerald-400 hover:text-emerald-300 gap-1"
+                    className="h-6 px-2 text-[11px] text-emerald-600 hover:text-emerald-700 gap-1"
                     data-testid="add-crew-button"
                   >
                     <UserPlus className="h-3 w-3" /> Add Crew
@@ -381,7 +381,7 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
                     size="sm"
                     variant="ghost"
                     onClick={() => setIsAddAircraftOpen(true)}
-                    className="h-6 px-2 text-[11px] text-sky-400 hover:text-sky-300 gap-1"
+                    className="h-6 px-2 text-[11px] text-sky-600 hover:text-sky-700 gap-1"
                     data-testid="add-aircraft-button"
                   >
                     <Plus className="h-3 w-3" /> Add Aircraft
@@ -391,7 +391,7 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
             </div>
 
             {filteredAircraft.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">
+              <div className="p-6 text-center text-xs text-slate-500">
                 No aircraft registered.
               </div>
             ) : (
@@ -403,22 +403,22 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
                     onClick={() => onSelectAircraft(ac.id)}
                     className={`cursor-pointer transition-all border ${
                       isSelected
-                        ? 'border-sky-500 bg-sky-500/10'
-                        : 'border-border/60 hover:border-border bg-card/40'
+                        ? 'border-sky-600 bg-sky-50 shadow-xs ring-1 ring-sky-500/30'
+                        : 'border-slate-800 hover:border-black bg-white shadow-xs'
                     }`}
                   >
                     <CardContent className="p-3 space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="font-medium text-xs text-foreground">
+                        <span className="font-semibold text-xs text-slate-900">
                           {ac.tail_number}
                         </span>
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
                           {ac.status}
                         </Badge>
                       </div>
-                      <div className="text-[11px] text-muted-foreground">{ac.aircraft_type}</div>
+                      <div className="text-[11px] text-slate-600">{ac.aircraft_type}</div>
                       {ac.cargo_capacity_kg && (
-                        <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <div className="text-[10px] text-slate-500 flex items-center gap-1">
                           <Package className="h-3 w-3" />
                           Capacity: {(ac.cargo_capacity_kg / 1000).toFixed(1)} tonnes
                         </div>
@@ -435,7 +435,7 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
         {activeTab === 'flights' && (
           <div className="space-y-2">
             <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-medium text-muted-foreground">
+              <span className="text-xs font-medium text-slate-500">
                 Flight Routes ({filteredFlights.length})
               </span>
               {isManager && (
@@ -443,7 +443,7 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
                   size="sm"
                   variant="ghost"
                   onClick={() => setIsAddFlightOpen(true)}
-                  className="h-6 px-2 text-[11px] text-sky-400 hover:text-sky-300 gap-1"
+                  className="h-6 px-2 text-[11px] text-sky-600 hover:text-sky-700 gap-1"
                 >
                   <Plus className="h-3 w-3" /> New Route
                 </Button>
@@ -451,24 +451,24 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
             </div>
 
             {filteredFlights.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">
+              <div className="p-6 text-center text-xs text-slate-500">
                 No flight routes defined.
               </div>
             ) : (
               filteredFlights.map((flight) => (
-                <Card key={flight.id} className="border-border/60 bg-card/40">
+                <Card key={flight.id} className="border-slate-800 bg-white shadow-xs">
                   <CardContent className="p-3 space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-xs text-sky-400">
+                      <span className="font-bold text-xs text-sky-700">
                         {flight.flight_number}
                       </span>
-                      <span className="text-[10px] text-muted-foreground">Great-Circle</span>
+                      <span className="text-[10px] text-slate-500">Great-Circle</span>
                     </div>
-                    <div className="text-[11px] text-foreground font-medium">
+                    <div className="text-[11px] text-slate-900 font-medium">
                       {flight.origin_airport?.iata_code || flight.origin_airport?.name} &rarr;{' '}
                       {flight.destination_airport?.iata_code || flight.destination_airport?.name}
                     </div>
-                    <div className="text-[10px] text-muted-foreground truncate">
+                    <div className="text-[10px] text-slate-500 truncate">
                       {flight.origin_airport?.name} to {flight.destination_airport?.name}
                     </div>
                   </CardContent>
@@ -482,7 +482,7 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
         {activeTab === 'airports' && (
           <div className="space-y-2">
             <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-medium text-muted-foreground">
+              <span className="text-xs font-medium text-slate-500">
                 Airports ({filteredAirports.length})
               </span>
               {isManager && (
@@ -490,7 +490,7 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
                   size="sm"
                   variant="ghost"
                   onClick={() => setIsAddAirportOpen(true)}
-                  className="h-6 px-2 text-[11px] text-sky-400 hover:text-sky-300 gap-1"
+                  className="h-6 px-2 text-[11px] text-sky-600 hover:text-sky-700 gap-1"
                 >
                   <Plus className="h-3 w-3" /> Add Airport
                 </Button>
@@ -498,22 +498,22 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
             </div>
 
             {filteredAirports.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">
+              <div className="p-6 text-center text-xs text-slate-500">
                 No airports registered.
               </div>
             ) : (
               filteredAirports.map((airport) => (
-                <Card key={airport.id} className="border-border/60 bg-card/40">
+                <Card key={airport.id} className="border-slate-800 bg-white shadow-xs">
                   <CardContent className="p-3 space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-xs text-foreground">{airport.name}</span>
+                      <span className="font-semibold text-xs text-slate-900">{airport.name}</span>
                       {airport.iata_code && (
                         <Badge variant="outline" className="text-[10px] px-1 py-0 font-mono">
                           {airport.iata_code}
                         </Badge>
                       )}
                     </div>
-                    <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    <div className="text-[10px] text-slate-500 flex items-center gap-1">
                       <MapPin className="h-3 w-3" />
                       {airport.lat?.toFixed(4)}, {airport.lng?.toFixed(4)}
                     </div>
@@ -528,7 +528,7 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
         {activeTab === 'crew' && (
           <div className="space-y-2">
             <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-medium text-muted-foreground">
+              <span className="text-xs font-medium text-slate-500">
                 Flight Crew ({filteredCrew.length})
               </span>
               {isManager && (
@@ -536,7 +536,7 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
                   size="sm"
                   variant="ghost"
                   onClick={() => setIsAddCrewOpen(true)}
-                  className="h-6 px-2 text-[11px] text-sky-400 hover:text-sky-300 gap-1"
+                  className="h-6 px-2 text-[11px] text-sky-600 hover:text-sky-700 gap-1"
                   data-testid="add-crew-button-tab"
                 >
                   <UserPlus className="h-3 w-3" /> Add Crew
@@ -545,25 +545,25 @@ export const AirwaysSidebar: React.FC<AirwaysSidebarProps> = ({
             </div>
 
             {filteredCrew.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">
+              <div className="p-6 text-center text-xs text-slate-500">
                 No flight crew registered.
               </div>
             ) : (
               filteredCrew.map((member) => (
-                <Card key={member.id} className="border-border/60 bg-card/40">
+                <Card key={member.id} className="border-slate-800 bg-white shadow-xs">
                   <CardContent className="p-3 space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-xs text-foreground">
+                      <span className="font-semibold text-xs text-slate-900">
                         {member.user?.full_name || 'Pilot'}
                       </span>
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
                         {member.crew_role}
                       </Badge>
                     </div>
-                    <div className="text-[10px] text-muted-foreground">
+                    <div className="text-[10px] text-slate-500">
                       License: {member.license_number}
                     </div>
-                    <div className="text-[10px] text-muted-foreground">
+                    <div className="text-[10px] text-slate-500">
                       Email: {member.user?.email || 'N/A'}
                     </div>
                   </CardContent>

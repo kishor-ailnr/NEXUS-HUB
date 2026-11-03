@@ -103,53 +103,60 @@ export const FlightMovementDetailsPanel: React.FC<FlightMovementDetailsPanelProp
 
   return (
     <div
-      className="absolute bottom-6 right-6 w-96 max-h-[85vh] z-20 overflow-y-auto animate-in fade-in slide-in-from-bottom-5"
+      className="absolute bottom-6 right-6 w-96 max-h-[85vh] z-30 overflow-y-auto animate-in fade-in slide-in-from-bottom-5"
       data-testid="flight-movement-details-panel"
     >
-      <Card className="border-border bg-card/95 backdrop-blur-md shadow-2xl overflow-hidden">
+      <Card className="border border-slate-800 bg-white shadow-xl rounded-xl overflow-hidden">
         {/* Header */}
-        <CardHeader className="p-4 pb-3 border-b border-border flex flex-row items-center justify-between space-y-0 bg-sky-500/5">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-sky-500/20 text-sky-400">
+        <CardHeader className="p-4 pb-3 border-b border-slate-200 flex flex-row items-center justify-between space-y-0 bg-sky-50/50">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-sky-50 text-sky-600 border border-sky-200">
               <Plane className="h-5 w-5" />
             </div>
             <div>
-              <CardTitle className="text-sm font-bold text-foreground">
+              <CardTitle className="text-sm font-bold text-slate-900">
                 {movement.flight?.flight_number || 'Flight Movement'}
               </CardTitle>
               <div className="flex items-center gap-2 mt-0.5">
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize border-sky-500/40 text-sky-400">
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize border-sky-300 bg-sky-50 text-sky-700 font-semibold">
                   {movement.status.replace('_', ' ')}
                 </Badge>
-                <span className="text-[10px] text-muted-foreground font-mono">
+                <span className="text-[10px] text-slate-500 font-mono">
                   {movement.routing_method || 'Great-Circle'}
                 </span>
               </div>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose} className="h-7 w-7 p-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="h-7 w-7 p-0 text-slate-400 hover:text-slate-700"
+            data-testid="close-flight-details-btn"
+            aria-label="Close flight details"
+          >
             <X className="h-4 w-4" />
           </Button>
         </CardHeader>
 
         <CardContent className="p-4 space-y-4 text-xs">
           {/* Origin -> Destination Banner */}
-          <div className="p-3 rounded-lg bg-muted/40 border border-border space-y-2">
+          <div className="p-3 rounded-lg bg-white border border-slate-800 shadow-xs space-y-2">
             <div className="flex items-center justify-between font-semibold text-xs">
-              <div className="flex items-center gap-1 text-sky-400">
-                <MapPin className="h-3.5 w-3.5" />
+              <div className="flex items-center gap-1 text-sky-700">
+                <MapPin className="h-3.5 w-3.5 text-sky-600" />
                 <span>{movement.flight?.origin_airport?.iata_code || 'DEP'}</span>
               </div>
-              <div className="flex items-center gap-1 text-muted-foreground text-[10px]">
+              <div className="flex items-center gap-1 text-slate-400 text-[10px]">
                 <span>{movement.distance_km ? `${movement.distance_km} km` : 'Great-Circle'}</span>
                 <ArrowRight className="h-3 w-3" />
               </div>
-              <div className="flex items-center gap-1 text-emerald-400">
-                <MapPin className="h-3.5 w-3.5" />
+              <div className="flex items-center gap-1 text-emerald-700">
+                <MapPin className="h-3.5 w-3.5 text-emerald-600" />
                 <span>{movement.flight?.destination_airport?.iata_code || 'ARR'}</span>
               </div>
             </div>
-            <div className="flex justify-between text-[11px] text-muted-foreground">
+            <div className="flex justify-between text-[11px] text-slate-500">
               <span className="truncate max-w-[120px]">{movement.flight?.origin_airport?.name}</span>
               <span className="truncate max-w-[120px] text-right">{movement.flight?.destination_airport?.name}</span>
             </div>
@@ -157,18 +164,18 @@ export const FlightMovementDetailsPanel: React.FC<FlightMovementDetailsPanelProp
 
           {/* ETA Confidence Badge & Intelligence Card */}
           {etaData && (
-            <div className="p-2.5 rounded-lg border border-sky-500/20 bg-sky-500/5 space-y-1.5">
+            <div className="p-3 rounded-lg border border-slate-800 bg-white shadow-xs space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-[11px] text-foreground flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-sky-400" />
+                <span className="font-semibold text-[11px] text-slate-800 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-sky-600" />
                   Estimated Flight Duration
                 </span>
                 <Badge
                   variant="outline"
                   className={`text-[9px] px-1.5 py-0 ${
                     etaData.confidence_basis === 'historical'
-                      ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
-                      : 'border-sky-500/40 text-sky-400 bg-sky-500/10'
+                      ? 'border-emerald-300 text-emerald-700 bg-emerald-50'
+                      : 'border-sky-300 text-sky-700 bg-sky-50'
                   }`}
                 >
                   {etaData.confidence_basis === 'historical'
@@ -177,10 +184,10 @@ export const FlightMovementDetailsPanel: React.FC<FlightMovementDetailsPanelProp
                 </Badge>
               </div>
               <div className="flex items-baseline justify-between">
-                <span className="font-mono text-base font-bold text-sky-400">
+                <span className="font-mono text-base font-bold text-sky-600">
                   {etaData.base_eta_minutes} min
                 </span>
-                <span className="text-[10px] text-muted-foreground font-mono">
+                <span className="text-[10px] text-slate-500 font-mono">
                   Range: {etaData.min_eta_minutes} - {etaData.max_eta_minutes} min (±{etaData.confidence_band_minutes}m)
                 </span>
               </div>
@@ -188,22 +195,22 @@ export const FlightMovementDetailsPanel: React.FC<FlightMovementDetailsPanelProp
           )}
 
           {/* Live Flight Telemetry Box */}
-          <div className="grid grid-cols-3 gap-2 p-3 rounded-lg border border-border bg-card/60">
+          <div className="grid grid-cols-3 gap-2 p-3 rounded-lg border border-slate-800 bg-white shadow-xs">
             <div className="space-y-0.5">
-              <div className="text-[10px] text-muted-foreground">Altitude</div>
-              <div className="font-mono font-bold text-xs text-sky-400">
+              <div className="text-[10px] text-slate-500 font-medium">Altitude</div>
+              <div className="font-mono font-bold text-xs text-sky-600">
                 {altitudeFt.toLocaleString()} ft
               </div>
             </div>
             <div className="space-y-0.5">
-              <div className="text-[10px] text-muted-foreground">Airspeed</div>
-              <div className="font-mono font-bold text-xs text-sky-400">
+              <div className="text-[10px] text-slate-500 font-medium">Airspeed</div>
+              <div className="font-mono font-bold text-xs text-sky-600">
                 {speedKts} kts
               </div>
             </div>
             <div className="space-y-0.5">
-              <div className="text-[10px] text-muted-foreground">Heading</div>
-              <div className="font-mono font-bold text-xs text-foreground">
+              <div className="text-[10px] text-slate-500 font-medium">Heading</div>
+              <div className="font-mono font-bold text-xs text-slate-800">
                 {heading}°
               </div>
             </div>
@@ -212,10 +219,10 @@ export const FlightMovementDetailsPanel: React.FC<FlightMovementDetailsPanelProp
           {/* Progress Bar */}
           <div className="space-y-1">
             <div className="flex justify-between text-[11px]">
-              <span className="text-muted-foreground">Flight Trajectory Progress</span>
-              <span className="font-mono font-semibold text-foreground">{progressPercent}%</span>
+              <span className="text-slate-500">Flight Trajectory Progress</span>
+              <span className="font-mono font-semibold text-slate-800">{progressPercent}%</span>
             </div>
-            <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+            <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-sky-500 to-emerald-400 transition-all duration-300"
                 style={{ width: `${Math.min(100, Math.max(0, progressPercent))}%` }}
@@ -225,62 +232,62 @@ export const FlightMovementDetailsPanel: React.FC<FlightMovementDetailsPanelProp
 
           {/* Pilot Score & DGCA FDTL Compliance */}
           <div className="grid grid-cols-2 gap-2">
-            <div className="p-2.5 rounded-lg border border-border bg-card/40 space-y-1">
-              <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3 text-sky-400" />
+            <div className="p-2.5 rounded-lg border border-slate-800 bg-white shadow-xs space-y-1">
+              <div className="text-[10px] text-slate-500 font-medium flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3 text-sky-600" />
                 Pilot Safety Score
               </div>
               <div className="flex items-baseline gap-1">
                 <span className={`font-mono text-base font-bold ${
-                  latestScore >= 85 ? 'text-emerald-400' : latestScore >= 70 ? 'text-amber-400' : 'text-rose-400'
+                  latestScore >= 85 ? 'text-emerald-600' : latestScore >= 70 ? 'text-amber-600' : 'text-rose-600'
                 }`}>
                   {latestScore}
                 </span>
-                <span className="text-[10px] text-muted-foreground">/ 100</span>
+                <span className="text-[10px] text-slate-400">/ 100</span>
               </div>
-              <div className="text-[9px] text-muted-foreground">
+              <div className="text-[9px] text-slate-400">
                 ICAO Annex 2 Rule
               </div>
             </div>
 
-            <div className="p-2.5 rounded-lg border border-border bg-card/40 space-y-1">
-              <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <Clock className="w-3 h-3 text-sky-400" />
+            <div className="p-2.5 rounded-lg border border-slate-800 bg-white shadow-xs space-y-1">
+              <div className="text-[10px] text-slate-500 font-medium flex items-center gap-1">
+                <Clock className="w-3 h-3 text-sky-600" />
                 DGCA FDTL Status
               </div>
-              <div className="font-semibold text-xs text-foreground">
+              <div className="font-semibold text-xs text-slate-800">
                 {latestDuty?.violation ? (
-                  <span className="text-rose-400 font-bold flex items-center gap-1">
+                  <span className="text-rose-600 font-bold flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3" /> Exceeded
                   </span>
                 ) : (
-                  <span className="text-emerald-400 font-medium">Compliant</span>
+                  <span className="text-emerald-600 font-medium">Compliant</span>
                 )}
               </div>
-              <div className="text-[9px] text-muted-foreground">
+              <div className="text-[9px] text-slate-400">
                 {latestDuty ? `${latestDuty.duty_minutes}m in 24h` : 'Max 780m FDP'}
               </div>
             </div>
           </div>
 
           {/* Aviation Carbon Footprint */}
-          <div className="p-2.5 rounded-lg border border-border bg-card/40 space-y-1">
+          <div className="p-2.5 rounded-lg border border-slate-800 bg-white shadow-xs space-y-1">
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-muted-foreground flex items-center gap-1">
-                <Leaf className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-slate-600 font-medium flex items-center gap-1">
+                <Leaf className="w-3.5 h-3.5 text-emerald-600" />
                 Air Freight Carbon Footprint:
               </span>
-              <span className="font-mono font-bold text-foreground">
+              <span className="font-mono font-bold text-slate-900">
                 {movement.carbon_kg ? `${movement.carbon_kg} kg CO₂e` : 'Calculated on dispatch'}
               </span>
             </div>
-            <div className="text-[9px] text-muted-foreground">
+            <div className="text-[9px] text-slate-500">
               GLEC v3.2: {movement.distance_km && movement.distance_km < 1500 ? '1.516 kg CO₂e/t-km (Short-Haul <1,500 km)' : '0.608 kg CO₂e/t-km (Long-Haul ≥1,500 km)'}
             </div>
           </div>
 
           {/* Aircraft & Crew Specs */}
-          <div className="space-y-2 border-t border-border pt-3">
+          <div className="space-y-2 border-t border-slate-800 pt-3">
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-muted-foreground flex items-center gap-1.5">
                 <Plane className="h-3.5 w-3.5 text-sky-400" /> Aircraft:

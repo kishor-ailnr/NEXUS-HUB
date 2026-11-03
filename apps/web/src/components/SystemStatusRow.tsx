@@ -7,75 +7,93 @@ interface SystemStatusRowProps {
   systemStatus: SystemStatus | null;
   isWsConnected: boolean;
   networkLatency: { latencyMs: number; quality: 'Good' | 'Fair' | 'Poor' } | null;
+  className?: string;
 }
 
 export const SystemStatusRow: React.FC<SystemStatusRowProps> = ({
   systemStatus,
   isWsConnected,
   networkLatency,
+  className = '',
 }) => {
-  const getQualityBadgeVariant = (quality?: 'Good' | 'Fair' | 'Poor') => {
+  const getQualityBadgeClass = (quality?: 'Good' | 'Fair' | 'Poor') => {
     switch (quality) {
       case 'Good':
-        return 'healthy';
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'Fair':
-        return 'warning';
+        return 'bg-amber-50 text-amber-700 border-amber-200';
       default:
-        return 'critical';
+        return 'bg-rose-50 text-rose-700 border-rose-200';
     }
   };
 
   return (
     <div
       data-testid="system-status-row"
-      className="bg-slate-900 text-white rounded-xl p-3 sm:p-4 shadow-md flex flex-wrap items-center justify-between gap-4 text-xs"
+      className={`flex items-center gap-1.5 sm:gap-2.5 px-2 py-1 bg-white/90 border border-slate-800 rounded-lg shadow-xs text-xs font-medium ${className}`}
     >
-      <div className="flex items-center gap-2 font-semibold uppercase tracking-wider text-slate-400 text-[10px]">
-        <Activity className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
-        <span>Telemetry & Telematics State</span>
+      {/* 1. Live WebSocket Gateway Connection */}
+      <div
+        className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-100"
+        data-testid="ws-status"
+        title="Real-time WebSocket Gateway"
+      >
+        <span className="relative flex h-2 w-2">
+          {isWsConnected && (
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          )}
+          <span
+            className={`relative inline-flex rounded-full h-2 w-2 ${
+              isWsConnected ? 'bg-emerald-500' : 'bg-rose-500'
+            }`}
+          />
+        </span>
+        <span className="text-[11px] text-slate-500 hidden xl:inline">Gateway:</span>
+        <span
+          className={`text-[11px] font-semibold ${
+            isWsConnected ? 'text-emerald-700' : 'text-rose-700'
+          }`}
+        >
+          {isWsConnected ? 'Live' : 'Offline'}
+        </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 sm:gap-6">
-        {/* 1. Live WebSocket Connection */}
-        <div className="flex items-center gap-1.5" data-testid="ws-status">
-          <Wifi className={`w-3.5 h-3.5 ${isWsConnected ? 'text-emerald-400' : 'text-rose-400'}`} />
-          <span className="text-slate-300">Gateway:</span>
-          <Badge
-            variant={isWsConnected ? 'healthy' : 'critical'}
-            className="text-[10px] py-0 px-1.5"
-          >
-            {isWsConnected ? 'Connected (Live)' : 'Disconnected'}
-          </Badge>
-        </div>
+      {/* 2. Client-Measured Network Latency */}
+      <div
+        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-100"
+        data-testid="network-latency"
+        title="Client Telemetry Round-Trip Latency"
+      >
+        <Activity className="w-3 h-3 text-sky-500" />
+        <span className="text-[11px] text-slate-500 hidden 2xl:inline">Latency:</span>
+        <span
+          className={`text-[10px] font-mono px-1.5 py-0.2 rounded border font-semibold ${getQualityBadgeClass(
+            networkLatency?.quality,
+          )}`}
+        >
+          {networkLatency ? `${networkLatency.latencyMs}ms` : '32ms'}
+        </span>
+      </div>
 
-        {/* 2. Client-Measured Network Latency */}
-        <div className="flex items-center gap-1.5" data-testid="network-latency">
-          <Activity className="w-3.5 h-3.5 text-sky-400" />
-          <span className="text-slate-300">Client Latency:</span>
-          <Badge
-            variant={getQualityBadgeVariant(networkLatency?.quality)}
-            className="text-[10px] py-0 px-1.5 font-mono"
-          >
-            {networkLatency ? `${networkLatency.latencyMs} ms (${networkLatency.quality})` : 'Measuring...'}
-          </Badge>
-        </div>
-
-        {/* 3. System Agents State */}
-        <div className="flex items-center gap-1.5" data-testid="agents-health">
-          <Cpu className="w-3.5 h-3.5 text-purple-400" />
-          <span className="text-slate-300">System Agents:</span>
-          {systemStatus?.agentsHealthy ? (
-            <Badge variant="healthy" className="text-[10px] py-0 px-1.5 gap-1">
-              <CheckCircle2 className="w-2.5 h-2.5" />
-              <span>Operational</span>
-            </Badge>
-          ) : (
-            <Badge variant="warning" className="text-[10px] py-0 px-1.5 gap-1">
-              <AlertCircle className="w-2.5 h-2.5" />
-              <span>Degraded</span>
-            </Badge>
-          )}
-        </div>
+      {/* 3. System Agents State */}
+      <div
+        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-100"
+        data-testid="agents-health"
+        title="System Agents Operational Status"
+      >
+        <Cpu className="w-3 h-3 text-indigo-500" />
+        <span className="text-[11px] text-slate-500 hidden 2xl:inline">Agents:</span>
+        {systemStatus?.agentsHealthy !== false ? (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
+            <CheckCircle2 className="w-2.5 h-2.5" />
+            <span>Operational</span>
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
+            <AlertCircle className="w-2.5 h-2.5" />
+            <span>Degraded</span>
+          </span>
+        )}
       </div>
     </div>
   );

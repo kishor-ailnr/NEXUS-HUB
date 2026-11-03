@@ -1,0 +1,96 @@
+{
+  "timestamp": "2026-11-03T13:38:00+05:30",
+  "project": "NEXUS WAYS Supply Chain Management System",
+  "environment": {
+    "node": "v20+",
+    "os": "Windows_NT x64",
+    "frameworks": {
+      "backend": "NestJS 10.x / Express / Supabase / Socket.IO",
+      "frontend": "React 18.3.1 / Vite 5.4.21 / TailwindCSS / Leaflet",
+      "shared": "TypeScript Monorepo (@nexus-ways/shared)"
+    }
+  },
+  "summary": {
+    "totalTestSuites": 35,
+    "passedTestSuites": 35,
+    "failedTestSuites": 0,
+    "totalTests": 280,
+    "passedTests": 280,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "passRate": "100.00%",
+    "status": "PASSED"
+  },
+  "breakdown": {
+    "frontendVitest": {
+      "testSuites": 15,
+      "passedSuites": 15,
+      "failedSuites": 0,
+      "totalTests": 69,
+      "passedTests": 69,
+      "failedTests": 0,
+      "durationSec": 19.89,
+      "suites": [
+        { "file": "src/pages/__tests__/Hub.test.tsx", "tests": 2, "passed": 2, "failed": 0 },
+        { "file": "src/components/__tests__/Phase5Intelligence.spec.tsx", "tests": 3, "passed": 3, "failed": 0 },
+        { "file": "src/components/__tests__/Phase7A2RailwaysIntelligence.spec.tsx", "tests": 4, "passed": 4, "failed": 0 },
+        { "file": "src/components/__tests__/Phase7C2SeawaysIntelligence.spec.tsx", "tests": 5, "passed": 5, "failed": 0 },
+        { "file": "src/components/__tests__/Roadways.spec.tsx", "tests": 6, "passed": 6, "failed": 0 },
+        { "file": "src/components/__tests__/Railways.spec.tsx", "tests": 5, "passed": 5, "failed": 0 },
+        { "file": "src/components/__tests__/Airways.spec.tsx", "tests": 5, "passed": 5, "failed": 0 },
+        { "file": "src/components/__tests__/Seaways.spec.tsx", "tests": 5, "passed": 5, "failed": 0 },
+        { "file": "src/pages/__tests__/AdminPanel.test.tsx", "tests": 4, "passed": 4, "failed": 0 },
+        { "file": "src/pages/__tests__/DriverDashboard.test.tsx", "tests": 4, "passed": 4, "failed": 0 },
+        { "file": "src/pages/__tests__/GenericAuth.test.tsx", "tests": 5, "passed": 5, "failed": 0 },
+        { "file": "src/pages/__tests__/DashboardChrome.test.tsx", "tests": 5, "passed": 5, "failed": 0 },
+        { "file": "src/store/__tests__/authStore.test.ts", "tests": 3, "passed": 3, "failed": 0 },
+        { "file": "src/components/__tests__/ProtectedRoute.test.tsx", "tests": 2, "passed": 2, "failed": 0 },
+        { "file": "src/pages/__tests__/Register.test.tsx", "tests": 1, "passed": 1, "failed": 0 },
+        { "file": "src/components/__tests__/BackButton.test.tsx", "tests": 2, "passed": 2, "failed": 0 }
+      ]
+    },
+    "backendApiUnit": {
+      "testSuites": 13,
+      "passedSuites": 13,
+      "failedSuites": 0,
+      "totalTests": 89,
+      "passedTests": 89,
+      "failedTests": 0,
+      "durationSec": 19.07,
+      "suites": [
+        { "file": "src/geocoding/geocoding.service.spec.ts", "tests": 3, "passed": 3, "failed": 0 },
+        { "file": "src/airways/routing/air-routing.service.spec.ts", "tests": 4, "passed": 4, "failed": 0 },
+        { "file": "src/seaways/routing/sea-routing.service.spec.ts", "tests": 5, "passed": 5, "failed": 0 },
+        { "file": "src/seaways/intelligence/seaways-intelligence.spec.ts", "tests": 9, "passed": 9, "failed": 0 },
+        { "file": "src/railways/routing/rail-routing.service.spec.ts", "tests": 4, "passed": 4, "failed": 0 },
+        { "file": "src/railways/intelligence/railways-intelligence.spec.ts", "tests": 8, "passed": 8, "failed": 0 },
+        { "file": "src/airways/intelligence/airways-intelligence.spec.ts", "tests": 8, "passed": 8, "failed": 0 },
+        { "file": "src/routing/routing.service.spec.ts", "tests": 6, "passed": 6, "failed": 0 },
+        { "file": "src/reports/pdf-report.service.spec.ts", "tests": 6, "passed": 6, "failed": 0 },
+        { "file": "src/platform/platform.controller.spec.ts", "tests": 3, "passed": 3, "failed": 0 },
+        { "file": "src/intelligence/intelligence.service.spec.ts", "tests": 11, "passed": 11, "failed": 0 },
+        { "file": "src/auth/auth.controller.spec.ts", "tests": 14, "passed": 14, "failed": 0 },
+        { "file": "src/ai/ai.service.spec.ts", "tests": 8, "passed": 8, "failed": 0 }
+      ]
+    },
+    "backendApiE2E": {
+      "testSuites": 7,
+      "passedSuites": 7,
+      "failedSuites": 0,
+      "totalTests": 122,
+      "passedTests": 122,
+      "failedTests": 0,
+      "durationSec": 55.03,
+      "suites": [
+        { "file": "test/rls-live.e2e-spec.ts", "tests": 16, "passed": 16, "failed": 0 },
+        { "file": "test/railways.e2e-spec.ts", "tests": 21, "passed": 21, "failed": 0 },
+        { "file": "test/auth.e2e-spec.ts", "tests": 18, "passed": 18, "failed": 0 },
+        { "file": "test/roadways.e2e-spec.ts", "tests": 19, "passed": 19, "failed": 0 },
+        { "file": "test/seaways.e2e-spec.ts", "tests": 23, "passed": 23, "failed": 0 },
+        { "file": "test/airways.e2e-spec.ts", "tests": 17, "passed": 17, "failed": 0 },
+        { "file": "test/security-hardening.e2e-spec.ts", "tests": 8, "passed": 8, "failed": 0 }
+      ]
+    }
+  }
+}
+
