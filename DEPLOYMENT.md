@@ -125,3 +125,4 @@ Once your backend is live on Render:
 - [ ] `GET https://<your-service-name>.onrender.com/platform/hub-stats` returns active movement telemetry.
 - [ ] Opening the frontend loads the 4 multimodal cards (`Roadways`, `Railways`, `Airways`, `Seaways`).
 - [ ] Logging in with `demo.roadways@nexusways.com` / `NexusPassword123!` opens the operational dashboard.
+
