@@ -10,6 +10,9 @@
   "scripts": {
     "dev": "concurrently -n \"api,web\" -c \"cyan,magenta\" \"npm run dev --workspace=@nexus-ways/api\" \"npm run dev --workspace=@nexus-ways/web\"",
     "build": "npm run build --workspaces --if-present",
+    "build:api": "npm run build --workspace=@nexus-ways/shared && npm run build --workspace=@nexus-ways/api",
+    "build:web": "npm run build --workspace=@nexus-ways/shared && npm run build --workspace=@nexus-ways/web",
+    "seed": "node scripts/seed-database.cjs",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
   },
