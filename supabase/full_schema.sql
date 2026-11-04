@@ -10,10 +10,15 @@
 -- Phase 1 Foundation Migration: Organizations, Users, Roles and RLS
 
 -- Create user_role enum
-create type user_role as enum ('manager', 'operator', 'driver', 'crew');
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'user_role') then
+    create type user_role as enum ('manager', 'operator', 'driver', 'crew');
+  end if;
+end $$;
 
 -- Create organizations table
-create table organizations (
+create table if not exists organizations (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   country text not null default 'India',
@@ -24,7 +29,7 @@ create table organizations (
 );
 
 -- Create users table linked to Supabase auth.users
-create table users (
+create table if not exists users (
   id uuid primary key references auth.users (id) on delete cascade,
   org_id uuid not null references organizations (id) on delete cascade,
   full_name text not null,
@@ -34,8 +39,8 @@ create table users (
 );
 
 -- Create helpful indexes
-create index idx_users_org_id on users (org_id);
-create index idx_users_email on users (email);
+create index if not exists idx_users_org_id on users (org_id);
+create index if not exists idx_users_email on users (email);
 
 -- Enable Row Level Security
 alter table organizations enable row level security;
@@ -43,15 +48,18 @@ alter table users enable row level security;
 
 -- RLS Policies for organizations
 -- A user may read their own organization's row
+drop policy if exists org_select_own on organizations;
 create policy org_select_own on organizations for select
   using (id in (select org_id from users where users.id = auth.uid()));
 
 -- RLS Policies for users
 -- A user may read other users in their own organization
+drop policy if exists users_select_same_org on users;
 create policy users_select_same_org on users for select
   using (org_id in (select org_id from users u2 where u2.id = auth.uid()));
 
 -- A user may update only their own row
+drop policy if exists users_update_self on users;
 create policy users_update_self on users for update
   using (id = auth.uid());
 
@@ -62,13 +70,18 @@ create policy users_update_self on users for update
 
 -- Migration 0002: Add org_mode enum and mode column to organizations table
 
-create type org_mode as enum ('roadways', 'railways', 'airways', 'seaways');
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'org_mode') then
+    create type org_mode as enum ('roadways', 'railways', 'airways', 'seaways');
+  end if;
+end $$;
 
 alter table organizations
-  add column mode org_mode not null default 'roadways';
+  add column if not exists mode org_mode not null default 'roadways';
 
 -- Index on mode for mode-specific queries
-create index organizations_mode_idx on organizations (mode);
+create index if not exists organizations_mode_idx on organizations (mode);
 
 
 -- ========================================================
@@ -79,10 +92,10 @@ create index organizations_mode_idx on organizations (mode);
 -- Add location coordinates to organizations and create notifications and alerts tables
 
 alter table organizations
-  add column latitude double precision,
-  add column longitude double precision;
+  add column if not exists latitude double precision,
+  add column if not exists longitude double precision;
 
-create table notifications (
+create table if not exists notifications (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations (id) on delete cascade,
   user_id uuid references users (id) on delete cascade, -- null = org-wide
@@ -95,7 +108,7 @@ create table notifications (
   created_at timestamptz not null default now()
 );
 
-create table alerts (
+create table if not exists alerts (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations (id) on delete cascade,
   type text not null,
@@ -108,18 +121,21 @@ create table alerts (
 alter table notifications enable row level security;
 alter table alerts enable row level security;
 
+drop policy if exists notifications_select_own_org on notifications;
 create policy notifications_select_own_org on notifications for select
   using (org_id in (select org_id from users where users.id = auth.uid())
          and (user_id is null or user_id = auth.uid()));
 
+drop policy if exists notifications_update_own on notifications;
 create policy notifications_update_own on notifications for update
   using (user_id = auth.uid() or user_id is null);
 
+drop policy if exists alerts_select_own_org on alerts;
 create policy alerts_select_own_org on alerts for select
   using (org_id in (select org_id from users where users.id = auth.uid()));
 
-create index notifications_org_user_idx on notifications (org_id, user_id, read_at);
-create index alerts_org_idx on alerts (org_id, created_at desc);
+create index if not exists notifications_org_user_idx on notifications (org_id, user_id, read_at);
+create index if not exists alerts_org_idx on alerts (org_id, created_at desc);
 
 
 -- ========================================================
@@ -129,7 +145,7 @@ create index alerts_org_idx on alerts (org_id, created_at desc);
 -- 0004_roadways_core.sql
 -- Core Roadways tables: drivers, vehicles, saved_routes, trips, checkpoints, gps_points, geofences, convoys, hos_logs
 
-create table drivers (
+create table if not exists drivers (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   user_id uuid not null references users(id) on delete cascade,
@@ -139,7 +155,7 @@ create table drivers (
   created_at timestamptz not null default now()
 );
 
-create table vehicles (
+create table if not exists vehicles (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   registration_number text not null,
@@ -151,7 +167,7 @@ create table vehicles (
   unique (org_id, registration_number)
 );
 
-create table saved_routes (
+create table if not exists saved_routes (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   origin_label text not null,
@@ -163,7 +179,7 @@ create table saved_routes (
   unique (org_id, origin_label, destination_label)
 );
 
-create table trips (
+create table if not exists trips (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   vehicle_id uuid not null references vehicles(id),
@@ -183,7 +199,7 @@ create table trips (
   created_at timestamptz not null default now()
 );
 
-create table trip_checkpoints (
+create table if not exists trip_checkpoints (
   id uuid primary key default gen_random_uuid(),
   trip_id uuid not null references trips(id) on delete cascade,
   sequence int not null,
@@ -194,7 +210,7 @@ create table trip_checkpoints (
   arrived_at timestamptz
 );
 
-create table gps_points (
+create table if not exists gps_points (
   id uuid primary key default gen_random_uuid(),
   trip_id uuid not null references trips(id) on delete cascade,
   vehicle_id uuid not null references vehicles(id),
@@ -205,7 +221,7 @@ create table gps_points (
   recorded_at timestamptz not null default now()
 );
 
-create table geofences (
+create table if not exists geofences (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   name text not null,
@@ -216,7 +232,7 @@ create table geofences (
   created_at timestamptz not null default now()
 );
 
-create table geofence_events (
+create table if not exists geofence_events (
   id uuid primary key default gen_random_uuid(),
   geofence_id uuid not null references geofences(id) on delete cascade,
   vehicle_id uuid not null references vehicles(id),
@@ -224,14 +240,14 @@ create table geofence_events (
   occurred_at timestamptz not null default now()
 );
 
-create table convoy_groups (
+create table if not exists convoy_groups (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   name text not null,
   created_at timestamptz not null default now()
 );
 
-create table convoy_members (
+create table if not exists convoy_members (
   id uuid primary key default gen_random_uuid(),
   convoy_id uuid not null references convoy_groups(id) on delete cascade,
   vehicle_id uuid not null references vehicles(id),
@@ -239,7 +255,7 @@ create table convoy_members (
   unique (convoy_id, vehicle_id)
 );
 
-create table hos_logs (
+create table if not exists hos_logs (
   id uuid primary key default gen_random_uuid(),
   driver_id uuid not null references drivers(id) on delete cascade,
   trip_id uuid references trips(id),
@@ -249,10 +265,10 @@ create table hos_logs (
   violation boolean not null default false
 );
 
-create index gps_points_trip_idx on gps_points (trip_id, recorded_at desc);
-create index trips_org_status_idx on trips (org_id, status);
-create index geofence_events_idx on geofence_events (geofence_id, occurred_at desc);
-create index hos_logs_driver_window_idx on hos_logs (driver_id, window_ended_at desc);
+create index if not exists gps_points_trip_idx on gps_points (trip_id, recorded_at desc);
+create index if not exists trips_org_status_idx on trips (org_id, status);
+create index if not exists geofence_events_idx on geofence_events (geofence_id, occurred_at desc);
+create index if not exists hos_logs_driver_window_idx on hos_logs (driver_id, window_ended_at desc);
 
 -- RLS
 alter table drivers enable row level security;
@@ -267,29 +283,40 @@ alter table convoy_groups enable row level security;
 alter table convoy_members enable row level security;
 alter table hos_logs enable row level security;
 
+drop policy if exists drivers_org on drivers;
 create policy drivers_org on drivers for all using (org_id in (select org_id from users where users.id = auth.uid()));
+drop policy if exists vehicles_org on vehicles;
 create policy vehicles_org on vehicles for all using (org_id in (select org_id from users where users.id = auth.uid()));
+drop policy if exists saved_routes_org on saved_routes;
 create policy saved_routes_org on saved_routes for all using (org_id in (select org_id from users where users.id = auth.uid()));
+drop policy if exists trips_org on trips;
 create policy trips_org on trips for all using (org_id in (select org_id from users where users.id = auth.uid()));
+drop policy if exists geofences_org on geofences;
 create policy geofences_org on geofences for all using (org_id in (select org_id from users where users.id = auth.uid()));
+drop policy if exists convoy_groups_org on convoy_groups;
 create policy convoy_groups_org on convoy_groups for all using (org_id in (select org_id from users where users.id = auth.uid()));
 
+drop policy if exists trip_checkpoints_org on trip_checkpoints;
 create policy trip_checkpoints_org on trip_checkpoints for all using (
   trip_id in (select id from trips where org_id in (select org_id from users where users.id = auth.uid()))
 );
 
+drop policy if exists gps_points_org on gps_points;
 create policy gps_points_org on gps_points for all using (
   trip_id in (select id from trips where org_id in (select org_id from users where users.id = auth.uid()))
 );
 
+drop policy if exists geofence_events_org on geofence_events;
 create policy geofence_events_org on geofence_events for all using (
   geofence_id in (select id from geofences where org_id in (select org_id from users where users.id = auth.uid()))
 );
 
+drop policy if exists convoy_members_org on convoy_members;
 create policy convoy_members_org on convoy_members for all using (
   convoy_id in (select id from convoy_groups where org_id in (select org_id from users where users.id = auth.uid()))
 );
 
+drop policy if exists hos_logs_org on hos_logs;
 create policy hos_logs_org on hos_logs for all using (
   driver_id in (select id from drivers where org_id in (select org_id from users where users.id = auth.uid()))
 );
@@ -323,6 +350,7 @@ create index if not exists driver_behavior_driver_idx on driver_behavior_scores 
 -- RLS
 alter table driver_behavior_scores enable row level security;
 
+drop policy if exists driver_behavior_scores_org on driver_behavior_scores;
 create policy driver_behavior_scores_org on driver_behavior_scores for all using (
   driver_id in (select id from drivers where org_id in (select org_id from users where users.id = auth.uid()))
 );
@@ -355,6 +383,7 @@ CREATE INDEX IF NOT EXISTS idx_trip_reports_generated_at ON public.trip_reports(
 -- 3. Row Level Security (RLS)
 ALTER TABLE public.trip_reports ENABLE ROW LEVEL SECURITY;
 
+drop policy if exists "Tenant isolation for trip_reports select" on public.trip_reports;
 CREATE POLICY "Tenant isolation for trip_reports select" ON public.trip_reports
     FOR SELECT USING (
         org_id IN (
@@ -362,6 +391,7 @@ CREATE POLICY "Tenant isolation for trip_reports select" ON public.trip_reports
         )
     );
 
+drop policy if exists "Tenant isolation for trip_reports insert" on public.trip_reports;
 CREATE POLICY "Tenant isolation for trip_reports insert" ON public.trip_reports
     FOR INSERT WITH CHECK (
         org_id IN (
@@ -418,7 +448,7 @@ create policy "Tenant isolation for trip_reports insert" on public.trip_reports
 
 -- Phase 7A-1 Migration: Railways Core Tables & RLS Policies
 
-create table stations (
+create table if not exists stations (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   name text not null,
@@ -429,7 +459,7 @@ create table stations (
   created_at timestamptz not null default now()
 );
 
-create table locomotives (
+create table if not exists locomotives (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   loco_number text not null,
@@ -441,7 +471,7 @@ create table locomotives (
   unique (org_id, loco_number)
 );
 
-create table rakes (
+create table if not exists rakes (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   rake_id text not null,
@@ -450,7 +480,7 @@ create table rakes (
   unique (org_id, rake_id)
 );
 
-create table loco_pilots (
+create table if not exists loco_pilots (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   user_id uuid not null references users(id) on delete cascade,
@@ -460,7 +490,7 @@ create table loco_pilots (
   created_at timestamptz not null default now()
 );
 
-create table trains (
+create table if not exists trains (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   train_number text not null,
@@ -472,7 +502,7 @@ create table trains (
   unique (org_id, train_number)
 );
 
-create table saved_rail_routes (
+create table if not exists saved_rail_routes (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   origin_station_id uuid not null references stations(id) on delete cascade,
@@ -485,7 +515,7 @@ create table saved_rail_routes (
   unique (org_id, origin_station_id, destination_station_id)
 );
 
-create table train_movements (
+create table if not exists train_movements (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   train_id uuid not null references trains(id) on delete cascade,
@@ -501,7 +531,7 @@ create table train_movements (
   created_at timestamptz not null default now()
 );
 
-create table train_movement_stops (
+create table if not exists train_movement_stops (
   id uuid primary key default gen_random_uuid(),
   movement_id uuid not null references train_movements(id) on delete cascade,
   station_id uuid not null references stations(id) on delete cascade,
@@ -511,7 +541,7 @@ create table train_movement_stops (
   departed_at timestamptz
 );
 
-create table train_telemetry (
+create table if not exists train_telemetry (
   id uuid primary key default gen_random_uuid(),
   movement_id uuid not null references train_movements(id) on delete cascade,
   train_id uuid not null references trains(id) on delete cascade,
@@ -522,14 +552,14 @@ create table train_telemetry (
   recorded_at timestamptz not null default now()
 );
 
-create index idx_stations_org_id on stations (org_id);
-create index idx_locomotives_org_id on locomotives (org_id);
-create index idx_rakes_org_id on rakes (org_id);
-create index idx_loco_pilots_org_id on loco_pilots (org_id);
-create index idx_trains_org_id on trains (org_id);
-create index idx_saved_rail_routes_org_id on saved_rail_routes (org_id);
-create index train_telemetry_movement_idx on train_telemetry (movement_id, recorded_at desc);
-create index train_movements_org_status_idx on train_movements (org_id, status);
+create index if not exists idx_stations_org_id on stations (org_id);
+create index if not exists idx_locomotives_org_id on locomotives (org_id);
+create index if not exists idx_rakes_org_id on rakes (org_id);
+create index if not exists idx_loco_pilots_org_id on loco_pilots (org_id);
+create index if not exists idx_trains_org_id on trains (org_id);
+create index if not exists idx_saved_rail_routes_org_id on saved_rail_routes (org_id);
+create index if not exists train_telemetry_movement_idx on train_telemetry (movement_id, recorded_at desc);
+create index if not exists train_movements_org_status_idx on train_movements (org_id, status);
 
 -- Enable RLS
 alter table stations enable row level security;
@@ -543,88 +573,122 @@ alter table train_movement_stops enable row level security;
 alter table train_telemetry enable row level security;
 
 -- Stations RLS Policies
+drop policy if exists "Tenant isolation for stations select" on stations;
 create policy "Tenant isolation for stations select" on stations
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for stations insert" on stations;
 create policy "Tenant isolation for stations insert" on stations
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for stations update" on stations;
 create policy "Tenant isolation for stations update" on stations
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for stations delete" on stations;
 create policy "Tenant isolation for stations delete" on stations
   for delete using (org_id = public.get_auth_org_id());
 
 -- Locomotives RLS Policies
+drop policy if exists "Tenant isolation for locomotives select" on locomotives;
 create policy "Tenant isolation for locomotives select" on locomotives
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for locomotives insert" on locomotives;
 create policy "Tenant isolation for locomotives insert" on locomotives
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for locomotives update" on locomotives;
 create policy "Tenant isolation for locomotives update" on locomotives
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for locomotives delete" on locomotives;
 create policy "Tenant isolation for locomotives delete" on locomotives
   for delete using (org_id = public.get_auth_org_id());
 
 -- Rakes RLS Policies
+drop policy if exists "Tenant isolation for rakes select" on rakes;
 create policy "Tenant isolation for rakes select" on rakes
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for rakes insert" on rakes;
 create policy "Tenant isolation for rakes insert" on rakes
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for rakes update" on rakes;
 create policy "Tenant isolation for rakes update" on rakes
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for rakes delete" on rakes;
 create policy "Tenant isolation for rakes delete" on rakes
   for delete using (org_id = public.get_auth_org_id());
 
 -- Loco Pilots RLS Policies
+drop policy if exists "Tenant isolation for loco_pilots select" on loco_pilots;
 create policy "Tenant isolation for loco_pilots select" on loco_pilots
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for loco_pilots insert" on loco_pilots;
 create policy "Tenant isolation for loco_pilots insert" on loco_pilots
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for loco_pilots update" on loco_pilots;
 create policy "Tenant isolation for loco_pilots update" on loco_pilots
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for loco_pilots delete" on loco_pilots;
 create policy "Tenant isolation for loco_pilots delete" on loco_pilots
   for delete using (org_id = public.get_auth_org_id());
 
 -- Trains RLS Policies
+drop policy if exists "Tenant isolation for trains select" on trains;
 create policy "Tenant isolation for trains select" on trains
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for trains insert" on trains;
 create policy "Tenant isolation for trains insert" on trains
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for trains update" on trains;
 create policy "Tenant isolation for trains update" on trains
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for trains delete" on trains;
 create policy "Tenant isolation for trains delete" on trains
   for delete using (org_id = public.get_auth_org_id());
 
 -- Saved Rail Routes RLS Policies
+drop policy if exists "Tenant isolation for saved_rail_routes select" on saved_rail_routes;
 create policy "Tenant isolation for saved_rail_routes select" on saved_rail_routes
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for saved_rail_routes insert" on saved_rail_routes;
 create policy "Tenant isolation for saved_rail_routes insert" on saved_rail_routes
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for saved_rail_routes update" on saved_rail_routes;
 create policy "Tenant isolation for saved_rail_routes update" on saved_rail_routes
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for saved_rail_routes delete" on saved_rail_routes;
 create policy "Tenant isolation for saved_rail_routes delete" on saved_rail_routes
   for delete using (org_id = public.get_auth_org_id());
 
 -- Train Movements RLS Policies
+drop policy if exists "Tenant isolation for train_movements select" on train_movements;
 create policy "Tenant isolation for train_movements select" on train_movements
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for train_movements insert" on train_movements;
 create policy "Tenant isolation for train_movements insert" on train_movements
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for train_movements update" on train_movements;
 create policy "Tenant isolation for train_movements update" on train_movements
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for train_movements delete" on train_movements;
 create policy "Tenant isolation for train_movements delete" on train_movements
   for delete using (org_id = public.get_auth_org_id());
 
 -- Train Movement Stops RLS Policies
+drop policy if exists "Tenant isolation for train_movement_stops select" on train_movement_stops;
 create policy "Tenant isolation for train_movement_stops select" on train_movement_stops
   for select using (movement_id in (select id from train_movements where org_id = public.get_auth_org_id()));
+drop policy if exists "Tenant isolation for train_movement_stops insert" on train_movement_stops;
 create policy "Tenant isolation for train_movement_stops insert" on train_movement_stops
   for insert with check (movement_id in (select id from train_movements where org_id = public.get_auth_org_id()));
+drop policy if exists "Tenant isolation for train_movement_stops update" on train_movement_stops;
 create policy "Tenant isolation for train_movement_stops update" on train_movement_stops
   for update using (movement_id in (select id from train_movements where org_id = public.get_auth_org_id()));
+drop policy if exists "Tenant isolation for train_movement_stops delete" on train_movement_stops;
 create policy "Tenant isolation for train_movement_stops delete" on train_movement_stops
   for delete using (movement_id in (select id from train_movements where org_id = public.get_auth_org_id()));
 
 -- Train Telemetry RLS Policies
+drop policy if exists "Tenant isolation for train_telemetry select" on train_telemetry;
 create policy "Tenant isolation for train_telemetry select" on train_telemetry
   for select using (movement_id in (select id from train_movements where org_id = public.get_auth_org_id()));
+drop policy if exists "Tenant isolation for train_telemetry insert" on train_telemetry;
 create policy "Tenant isolation for train_telemetry insert" on train_telemetry
   for insert with check (movement_id in (select id from train_movements where org_id = public.get_auth_org_id()));
 
@@ -676,36 +740,44 @@ alter table public.crew_behavior_scores enable row level security;
 alter table public.train_movement_reports enable row level security;
 
 -- Crew Behavior Scores RLS Policies
+drop policy if exists "Tenant isolation for crew_behavior_scores select" on public.crew_behavior_scores;
 create policy "Tenant isolation for crew_behavior_scores select" on public.crew_behavior_scores
   for select using (
     movement_id in (select id from public.train_movements where org_id = public.get_auth_org_id())
   );
 
+drop policy if exists "Tenant isolation for crew_behavior_scores insert" on public.crew_behavior_scores;
 create policy "Tenant isolation for crew_behavior_scores insert" on public.crew_behavior_scores
   for insert with check (
     movement_id in (select id from public.train_movements where org_id = public.get_auth_org_id())
   );
 
+drop policy if exists "Tenant isolation for crew_behavior_scores update" on public.crew_behavior_scores;
 create policy "Tenant isolation for crew_behavior_scores update" on public.crew_behavior_scores
   for update using (
     movement_id in (select id from public.train_movements where org_id = public.get_auth_org_id())
   );
 
+drop policy if exists "Tenant isolation for crew_behavior_scores delete" on public.crew_behavior_scores;
 create policy "Tenant isolation for crew_behavior_scores delete" on public.crew_behavior_scores
   for delete using (
     movement_id in (select id from public.train_movements where org_id = public.get_auth_org_id())
   );
 
 -- Train Movement Reports RLS Policies
+drop policy if exists "Tenant isolation for train_movement_reports select" on public.train_movement_reports;
 create policy "Tenant isolation for train_movement_reports select" on public.train_movement_reports
   for select using (org_id = public.get_auth_org_id());
 
+drop policy if exists "Tenant isolation for train_movement_reports insert" on public.train_movement_reports;
 create policy "Tenant isolation for train_movement_reports insert" on public.train_movement_reports
   for insert with check (org_id = public.get_auth_org_id());
 
+drop policy if exists "Tenant isolation for train_movement_reports update" on public.train_movement_reports;
 create policy "Tenant isolation for train_movement_reports update" on public.train_movement_reports
   for update using (org_id = public.get_auth_org_id());
 
+drop policy if exists "Tenant isolation for train_movement_reports delete" on public.train_movement_reports;
 create policy "Tenant isolation for train_movement_reports delete" on public.train_movement_reports
   for delete using (org_id = public.get_auth_org_id());
 
@@ -721,7 +793,7 @@ on conflict (id) do nothing;
 
 -- Phase 7B-1 Migration: Airways Core Tables & RLS Policies
 
-create table airports (
+create table if not exists airports (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   name text not null,
@@ -732,7 +804,7 @@ create table airports (
   created_at timestamptz not null default now()
 );
 
-create table aircraft (
+create table if not exists aircraft (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   tail_number text not null,
@@ -744,7 +816,7 @@ create table aircraft (
   unique (org_id, tail_number)
 );
 
-create table flight_crew (
+create table if not exists flight_crew (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   user_id uuid not null references users(id) on delete cascade,
@@ -756,7 +828,7 @@ create table flight_crew (
   created_at timestamptz not null default now()
 );
 
-create table flights (
+create table if not exists flights (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   flight_number text not null,
@@ -766,7 +838,7 @@ create table flights (
   unique (org_id, flight_number)
 );
 
-create table flight_movements (
+create table if not exists flight_movements (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   flight_id uuid not null references flights(id),
@@ -783,7 +855,7 @@ create table flight_movements (
   created_at timestamptz not null default now()
 );
 
-create table flight_telemetry (
+create table if not exists flight_telemetry (
   id uuid primary key default gen_random_uuid(),
   movement_id uuid not null references flight_movements(id) on delete cascade,
   aircraft_id uuid not null references aircraft(id),
@@ -796,12 +868,12 @@ create table flight_telemetry (
 );
 
 -- Indexes
-create index idx_airports_org_id on airports (org_id);
-create index idx_aircraft_org_id on aircraft (org_id);
-create index idx_flight_crew_org_id on flight_crew (org_id);
-create index idx_flights_org_id on flights (org_id);
-create index flight_telemetry_movement_idx on flight_telemetry (movement_id, recorded_at desc);
-create index flight_movements_org_status_idx on flight_movements (org_id, status);
+create index if not exists idx_airports_org_id on airports (org_id);
+create index if not exists idx_aircraft_org_id on aircraft (org_id);
+create index if not exists idx_flight_crew_org_id on flight_crew (org_id);
+create index if not exists idx_flights_org_id on flights (org_id);
+create index if not exists flight_telemetry_movement_idx on flight_telemetry (movement_id, recorded_at desc);
+create index if not exists flight_movements_org_status_idx on flight_movements (org_id, status);
 
 -- Enable RLS
 alter table airports enable row level security;
@@ -812,60 +884,83 @@ alter table flight_movements enable row level security;
 alter table flight_telemetry enable row level security;
 
 -- Airports RLS Policies
+drop policy if exists "Tenant isolation for airports select" on airports;
 create policy "Tenant isolation for airports select" on airports
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for airports insert" on airports;
 create policy "Tenant isolation for airports insert" on airports
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for airports update" on airports;
 create policy "Tenant isolation for airports update" on airports
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for airports delete" on airports;
 create policy "Tenant isolation for airports delete" on airports
   for delete using (org_id = public.get_auth_org_id());
 
 -- Aircraft RLS Policies
+drop policy if exists "Tenant isolation for aircraft select" on aircraft;
 create policy "Tenant isolation for aircraft select" on aircraft
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for aircraft insert" on aircraft;
 create policy "Tenant isolation for aircraft insert" on aircraft
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for aircraft update" on aircraft;
 create policy "Tenant isolation for aircraft update" on aircraft
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for aircraft delete" on aircraft;
 create policy "Tenant isolation for aircraft delete" on aircraft
   for delete using (org_id = public.get_auth_org_id());
 
 -- Flight Crew RLS Policies
+drop policy if exists "Tenant isolation for flight_crew select" on flight_crew;
 create policy "Tenant isolation for flight_crew select" on flight_crew
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for flight_crew insert" on flight_crew;
 create policy "Tenant isolation for flight_crew insert" on flight_crew
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for flight_crew update" on flight_crew;
 create policy "Tenant isolation for flight_crew update" on flight_crew
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for flight_crew delete" on flight_crew;
 create policy "Tenant isolation for flight_crew delete" on flight_crew
   for delete using (org_id = public.get_auth_org_id());
 
 -- Flights RLS Policies
+drop policy if exists "Tenant isolation for flights select" on flights;
 create policy "Tenant isolation for flights select" on flights
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for flights insert" on flights;
 create policy "Tenant isolation for flights insert" on flights
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for flights update" on flights;
 create policy "Tenant isolation for flights update" on flights
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for flights delete" on flights;
 create policy "Tenant isolation for flights delete" on flights
   for delete using (org_id = public.get_auth_org_id());
 
 -- Flight Movements RLS Policies
+drop policy if exists "Tenant isolation for flight_movements select" on flight_movements;
 create policy "Tenant isolation for flight_movements select" on flight_movements
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for flight_movements insert" on flight_movements;
 create policy "Tenant isolation for flight_movements insert" on flight_movements
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for flight_movements update" on flight_movements;
 create policy "Tenant isolation for flight_movements update" on flight_movements
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for flight_movements delete" on flight_movements;
 create policy "Tenant isolation for flight_movements delete" on flight_movements
   for delete using (org_id = public.get_auth_org_id());
 
 -- Flight Telemetry RLS Policies
+drop policy if exists "Tenant isolation for flight_telemetry select" on flight_telemetry;
 create policy "Tenant isolation for flight_telemetry select" on flight_telemetry
   for select using (movement_id in (select id from flight_movements where org_id = public.get_auth_org_id()));
+drop policy if exists "Tenant isolation for flight_telemetry insert" on flight_telemetry;
 create policy "Tenant isolation for flight_telemetry insert" on flight_telemetry
   for insert with check (movement_id in (select id from flight_movements where org_id = public.get_auth_org_id()));
+drop policy if exists "Tenant isolation for flight_telemetry delete" on flight_telemetry;
 create policy "Tenant isolation for flight_telemetry delete" on flight_telemetry
   for delete using (movement_id in (select id from flight_movements where org_id = public.get_auth_org_id()));
 
@@ -932,6 +1027,7 @@ alter table flight_duty_logs enable row level security;
 alter table flight_movement_reports enable row level security;
 
 -- Policies for crew_flight_scores
+drop policy if exists "Users can view crew flight scores for their org" on crew_flight_scores;
 create policy "Users can view crew flight scores for their org"
   on crew_flight_scores for select
   using (
@@ -942,6 +1038,7 @@ create policy "Users can view crew flight scores for their org"
     )
   );
 
+drop policy if exists "Users can manage crew flight scores for their org" on crew_flight_scores;
 create policy "Users can manage crew flight scores for their org"
   on crew_flight_scores for all
   using (
@@ -953,6 +1050,7 @@ create policy "Users can manage crew flight scores for their org"
   );
 
 -- Policies for flight_duty_logs
+drop policy if exists "Users can view flight duty logs for their org" on flight_duty_logs;
 create policy "Users can view flight duty logs for their org"
   on flight_duty_logs for select
   using (
@@ -964,6 +1062,7 @@ create policy "Users can view flight duty logs for their org"
   );
 
 -- Policies for flight_duty_logs
+drop policy if exists "Users can manage flight duty logs for their org" on flight_duty_logs;
 create policy "Users can manage flight duty logs for their org"
   on flight_duty_logs for all
   using (
@@ -975,10 +1074,12 @@ create policy "Users can manage flight duty logs for their org"
   );
 
 -- Policies for flight_movement_reports
+drop policy if exists "Users can view flight movement reports for their org" on flight_movement_reports;
 create policy "Users can view flight movement reports for their org"
   on flight_movement_reports for select
   using (org_id = public.get_auth_org_id());
 
+drop policy if exists "Users can manage flight movement reports for their org" on flight_movement_reports;
 create policy "Users can manage flight movement reports for their org"
   on flight_movement_reports for all
   using (org_id = public.get_auth_org_id());
@@ -991,7 +1092,7 @@ create policy "Users can manage flight movement reports for their org"
 
 -- Phase 7C-1 Migration: Seaways Core Tables & RLS Policies
 
-create table ports (
+create table if not exists ports (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   name text not null,
@@ -1001,7 +1102,7 @@ create table ports (
   created_at timestamptz not null default now()
 );
 
-create table vessels (
+create table if not exists vessels (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   vessel_name text not null,
@@ -1013,7 +1114,7 @@ create table vessels (
   unique (org_id, imo_number)
 );
 
-create table sea_crew (
+create table if not exists sea_crew (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   user_id uuid not null references users(id) on delete cascade,
@@ -1024,7 +1125,7 @@ create table sea_crew (
   created_at timestamptz not null default now()
 );
 
-create table voyages (
+create table if not exists voyages (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   voyage_number text not null,
@@ -1034,7 +1135,7 @@ create table voyages (
   unique (org_id, voyage_number)
 );
 
-create table saved_sea_routes (
+create table if not exists saved_sea_routes (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   origin_port_id uuid not null references ports(id),
@@ -1047,7 +1148,7 @@ create table saved_sea_routes (
   unique (org_id, origin_port_id, destination_port_id)
 );
 
-create table voyage_movements (
+create table if not exists voyage_movements (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   voyage_id uuid not null references voyages(id),
@@ -1062,7 +1163,7 @@ create table voyage_movements (
   created_at timestamptz not null default now()
 );
 
-create table vessel_telemetry (
+create table if not exists vessel_telemetry (
   id uuid primary key default gen_random_uuid(),
   movement_id uuid not null references voyage_movements(id) on delete cascade,
   vessel_id uuid not null references vessels(id),
@@ -1073,14 +1174,14 @@ create table vessel_telemetry (
   recorded_at timestamptz not null default now()
 );
 
-create table sea_convoy_groups (
+create table if not exists sea_convoy_groups (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references organizations(id) on delete cascade,
   name text not null,
   created_at timestamptz not null default now()
 );
 
-create table sea_convoy_members (
+create table if not exists sea_convoy_members (
   id uuid primary key default gen_random_uuid(),
   convoy_id uuid not null references sea_convoy_groups(id) on delete cascade,
   vessel_id uuid not null references vessels(id),
@@ -1089,15 +1190,15 @@ create table sea_convoy_members (
 );
 
 -- Indexes
-create index idx_ports_org_id on ports (org_id);
-create index idx_vessels_org_id on vessels (org_id);
-create index idx_sea_crew_org_id on sea_crew (org_id);
-create index idx_voyages_org_id on voyages (org_id);
-create index idx_saved_sea_routes_org on saved_sea_routes (org_id, origin_port_id, destination_port_id);
-create index vessel_telemetry_movement_idx on vessel_telemetry (movement_id, recorded_at desc);
-create index voyage_movements_org_status_idx on voyage_movements (org_id, status);
-create index idx_sea_convoy_groups_org_id on sea_convoy_groups (org_id);
-create index idx_sea_convoy_members_convoy_id on sea_convoy_members (convoy_id);
+create index if not exists idx_ports_org_id on ports (org_id);
+create index if not exists idx_vessels_org_id on vessels (org_id);
+create index if not exists idx_sea_crew_org_id on sea_crew (org_id);
+create index if not exists idx_voyages_org_id on voyages (org_id);
+create index if not exists idx_saved_sea_routes_org on saved_sea_routes (org_id, origin_port_id, destination_port_id);
+create index if not exists vessel_telemetry_movement_idx on vessel_telemetry (movement_id, recorded_at desc);
+create index if not exists voyage_movements_org_status_idx on voyage_movements (org_id, status);
+create index if not exists idx_sea_convoy_groups_org_id on sea_convoy_groups (org_id);
+create index if not exists idx_sea_convoy_members_convoy_id on sea_convoy_members (convoy_id);
 
 -- Enable RLS
 alter table ports enable row level security;
@@ -1111,88 +1212,122 @@ alter table sea_convoy_groups enable row level security;
 alter table sea_convoy_members enable row level security;
 
 -- Ports RLS Policies
+drop policy if exists "Tenant isolation for ports select" on ports;
 create policy "Tenant isolation for ports select" on ports
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for ports insert" on ports;
 create policy "Tenant isolation for ports insert" on ports
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for ports update" on ports;
 create policy "Tenant isolation for ports update" on ports
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for ports delete" on ports;
 create policy "Tenant isolation for ports delete" on ports
   for delete using (org_id = public.get_auth_org_id());
 
 -- Vessels RLS Policies
+drop policy if exists "Tenant isolation for vessels select" on vessels;
 create policy "Tenant isolation for vessels select" on vessels
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for vessels insert" on vessels;
 create policy "Tenant isolation for vessels insert" on vessels
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for vessels update" on vessels;
 create policy "Tenant isolation for vessels update" on vessels
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for vessels delete" on vessels;
 create policy "Tenant isolation for vessels delete" on vessels
   for delete using (org_id = public.get_auth_org_id());
 
 -- Sea Crew RLS Policies
+drop policy if exists "Tenant isolation for sea_crew select" on sea_crew;
 create policy "Tenant isolation for sea_crew select" on sea_crew
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for sea_crew insert" on sea_crew;
 create policy "Tenant isolation for sea_crew insert" on sea_crew
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for sea_crew update" on sea_crew;
 create policy "Tenant isolation for sea_crew update" on sea_crew
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for sea_crew delete" on sea_crew;
 create policy "Tenant isolation for sea_crew delete" on sea_crew
   for delete using (org_id = public.get_auth_org_id());
 
 -- Voyages RLS Policies
+drop policy if exists "Tenant isolation for voyages select" on voyages;
 create policy "Tenant isolation for voyages select" on voyages
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for voyages insert" on voyages;
 create policy "Tenant isolation for voyages insert" on voyages
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for voyages update" on voyages;
 create policy "Tenant isolation for voyages update" on voyages
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for voyages delete" on voyages;
 create policy "Tenant isolation for voyages delete" on voyages
   for delete using (org_id = public.get_auth_org_id());
 
 -- Saved Sea Routes RLS Policies
+drop policy if exists "Tenant isolation for saved_sea_routes select" on saved_sea_routes;
 create policy "Tenant isolation for saved_sea_routes select" on saved_sea_routes
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for saved_sea_routes insert" on saved_sea_routes;
 create policy "Tenant isolation for saved_sea_routes insert" on saved_sea_routes
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for saved_sea_routes update" on saved_sea_routes;
 create policy "Tenant isolation for saved_sea_routes update" on saved_sea_routes
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for saved_sea_routes delete" on saved_sea_routes;
 create policy "Tenant isolation for saved_sea_routes delete" on saved_sea_routes
   for delete using (org_id = public.get_auth_org_id());
 
 -- Voyage Movements RLS Policies
+drop policy if exists "Tenant isolation for voyage_movements select" on voyage_movements;
 create policy "Tenant isolation for voyage_movements select" on voyage_movements
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for voyage_movements insert" on voyage_movements;
 create policy "Tenant isolation for voyage_movements insert" on voyage_movements
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for voyage_movements update" on voyage_movements;
 create policy "Tenant isolation for voyage_movements update" on voyage_movements
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for voyage_movements delete" on voyage_movements;
 create policy "Tenant isolation for voyage_movements delete" on voyage_movements
   for delete using (org_id = public.get_auth_org_id());
 
 -- Vessel Telemetry RLS Policies
+drop policy if exists "Tenant isolation for vessel_telemetry select" on vessel_telemetry;
 create policy "Tenant isolation for vessel_telemetry select" on vessel_telemetry
   for select using (movement_id in (select id from voyage_movements where org_id = public.get_auth_org_id()));
+drop policy if exists "Tenant isolation for vessel_telemetry insert" on vessel_telemetry;
 create policy "Tenant isolation for vessel_telemetry insert" on vessel_telemetry
   for insert with check (movement_id in (select id from voyage_movements where org_id = public.get_auth_org_id()));
+drop policy if exists "Tenant isolation for vessel_telemetry delete" on vessel_telemetry;
 create policy "Tenant isolation for vessel_telemetry delete" on vessel_telemetry
   for delete using (movement_id in (select id from voyage_movements where org_id = public.get_auth_org_id()));
 
 -- Sea Convoy Groups RLS Policies
+drop policy if exists "Tenant isolation for sea_convoy_groups select" on sea_convoy_groups;
 create policy "Tenant isolation for sea_convoy_groups select" on sea_convoy_groups
   for select using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for sea_convoy_groups insert" on sea_convoy_groups;
 create policy "Tenant isolation for sea_convoy_groups insert" on sea_convoy_groups
   for insert with check (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for sea_convoy_groups update" on sea_convoy_groups;
 create policy "Tenant isolation for sea_convoy_groups update" on sea_convoy_groups
   for update using (org_id = public.get_auth_org_id());
+drop policy if exists "Tenant isolation for sea_convoy_groups delete" on sea_convoy_groups;
 create policy "Tenant isolation for sea_convoy_groups delete" on sea_convoy_groups
   for delete using (org_id = public.get_auth_org_id());
 
 -- Sea Convoy Members RLS Policies
+drop policy if exists "Tenant isolation for sea_convoy_members select" on sea_convoy_members;
 create policy "Tenant isolation for sea_convoy_members select" on sea_convoy_members
   for select using (convoy_id in (select id from sea_convoy_groups where org_id = public.get_auth_org_id()));
+drop policy if exists "Tenant isolation for sea_convoy_members insert" on sea_convoy_members;
 create policy "Tenant isolation for sea_convoy_members insert" on sea_convoy_members
   for insert with check (convoy_id in (select id from sea_convoy_groups where org_id = public.get_auth_org_id()));
+drop policy if exists "Tenant isolation for sea_convoy_members delete" on sea_convoy_members;
 create policy "Tenant isolation for sea_convoy_members delete" on sea_convoy_members
   for delete using (convoy_id in (select id from sea_convoy_groups where org_id = public.get_auth_org_id()));
 
@@ -1263,6 +1398,7 @@ alter table watchkeeping_logs enable row level security;
 alter table voyage_movement_reports enable row level security;
 
 -- Policies for sea_crew_scores
+drop policy if exists "Tenant isolation for sea_crew_scores select" on sea_crew_scores;
 create policy "Tenant isolation for sea_crew_scores select"
   on sea_crew_scores for select
   using (
@@ -1273,6 +1409,7 @@ create policy "Tenant isolation for sea_crew_scores select"
     )
   );
 
+drop policy if exists "Tenant isolation for sea_crew_scores insert" on sea_crew_scores;
 create policy "Tenant isolation for sea_crew_scores insert"
   on sea_crew_scores for insert
   with check (
@@ -1283,6 +1420,7 @@ create policy "Tenant isolation for sea_crew_scores insert"
     )
   );
 
+drop policy if exists "Tenant isolation for sea_crew_scores update" on sea_crew_scores;
 create policy "Tenant isolation for sea_crew_scores update"
   on sea_crew_scores for update
   using (
@@ -1293,6 +1431,7 @@ create policy "Tenant isolation for sea_crew_scores update"
     )
   );
 
+drop policy if exists "Tenant isolation for sea_crew_scores delete" on sea_crew_scores;
 create policy "Tenant isolation for sea_crew_scores delete"
   on sea_crew_scores for delete
   using (
@@ -1304,6 +1443,7 @@ create policy "Tenant isolation for sea_crew_scores delete"
   );
 
 -- Policies for watchkeeping_logs
+drop policy if exists "Tenant isolation for watchkeeping_logs select" on watchkeeping_logs;
 create policy "Tenant isolation for watchkeeping_logs select"
   on watchkeeping_logs for select
   using (
@@ -1314,6 +1454,7 @@ create policy "Tenant isolation for watchkeeping_logs select"
     )
   );
 
+drop policy if exists "Tenant isolation for watchkeeping_logs insert" on watchkeeping_logs;
 create policy "Tenant isolation for watchkeeping_logs insert"
   on watchkeeping_logs for insert
   with check (
@@ -1324,6 +1465,7 @@ create policy "Tenant isolation for watchkeeping_logs insert"
     )
   );
 
+drop policy if exists "Tenant isolation for watchkeeping_logs update" on watchkeeping_logs;
 create policy "Tenant isolation for watchkeeping_logs update"
   on watchkeeping_logs for update
   using (
@@ -1334,6 +1476,7 @@ create policy "Tenant isolation for watchkeeping_logs update"
     )
   );
 
+drop policy if exists "Tenant isolation for watchkeeping_logs delete" on watchkeeping_logs;
 create policy "Tenant isolation for watchkeeping_logs delete"
   on watchkeeping_logs for delete
   using (
@@ -1345,18 +1488,22 @@ create policy "Tenant isolation for watchkeeping_logs delete"
   );
 
 -- Policies for voyage_movement_reports
+drop policy if exists "Tenant isolation for voyage_movement_reports select" on voyage_movement_reports;
 create policy "Tenant isolation for voyage_movement_reports select"
   on voyage_movement_reports for select
   using (org_id = public.get_auth_org_id());
 
+drop policy if exists "Tenant isolation for voyage_movement_reports insert" on voyage_movement_reports;
 create policy "Tenant isolation for voyage_movement_reports insert"
   on voyage_movement_reports for insert
   with check (org_id = public.get_auth_org_id());
 
+drop policy if exists "Tenant isolation for voyage_movement_reports update" on voyage_movement_reports;
 create policy "Tenant isolation for voyage_movement_reports update"
   on voyage_movement_reports for update
   using (org_id = public.get_auth_org_id());
 
+drop policy if exists "Tenant isolation for voyage_movement_reports delete" on voyage_movement_reports;
 create policy "Tenant isolation for voyage_movement_reports delete"
   on voyage_movement_reports for delete
   using (org_id = public.get_auth_org_id());
