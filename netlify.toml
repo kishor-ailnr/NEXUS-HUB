@@ -1,0 +1,25 @@
+# ========================================================
+# NEXUS WAYS - Netlify Deployment Configuration (Frontend)
+# ========================================================
+
+[build]
+  command = "npm run build:web"
+  publish = "apps/web/dist"
+
+# Single Page Application (SPA) routing redirect
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Prevent aggressive browser caching of the HTML entry point
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# Long-term immutable caching for static hashed assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

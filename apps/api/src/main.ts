@@ -12,6 +12,9 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import cookieParser = require('cookie-parser');
+import * as express from 'express';
+import * as path from 'path';
+import * as fs from 'fs';
 import { AppModule } from './app.module';
 import { initSentry } from './common/sentry';
 
@@ -74,6 +77,63 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+
+  // Serve compiled web frontend SPA when distribution directory exists
+  const candidates = [
+    path.resolve(process.cwd(), 'apps/web/dist'),
+    path.resolve(__dirname, '../../web/dist'),
+    path.resolve(__dirname, '../../../apps/web/dist'),
+    path.resolve(__dirname, '../web/dist'),
+  ];
+  const webDistPath = candidates.find((p) => fs.existsSync(p));
+
+  if (webDistPath) {
+    logger.log(`Serving static web assets from: ${webDistPath}`);
+    app.use(express.static(webDistPath));
+
+    const expressApp = app.getHttpAdapter().getInstance();
+    expressApp.get('*', (req: any, res: any, next: any) => {
+      const url = req.path || '';
+      const apiPrefixes = [
+        '/auth',
+        '/health',
+        '/ai',
+        '/trips',
+        '/vehicles',
+        '/drivers',
+        '/geofences',
+        '/convoys',
+        '/dashboard',
+        '/notifications',
+        '/routing',
+        '/geocoding',
+        '/stations',
+        '/trains',
+        '/locomotives',
+        '/rakes',
+        '/loco-pilots',
+        '/train-movements',
+        '/airports',
+        '/aircraft',
+        '/flight-crew',
+        '/flights',
+        '/flight-movements',
+        '/platform',
+        '/vessels',
+        '/ports',
+        '/sea-crew',
+        '/voyages',
+        '/voyage-movements',
+        '/sea-convoys',
+        '/admin',
+        '/socket.io',
+      ];
+      if (apiPrefixes.some((prefix) => url.startsWith(prefix))) {
+        return next();
+      }
+      res.sendFile(path.join(webDistPath, 'index.html'));
+    });
+  }
 
   await app.listen(port);
   logger.log(`NEXUS WAYS API listening on port ${port}`);

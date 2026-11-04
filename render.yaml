@@ -1,12 +1,12 @@
 services:
   # ========================================================
-  # NEXUS WAYS - API Backend Web Service (NestJS)
+  # NEXUS WAYS - Full-Stack Unified Service (API + Frontend SPA)
   # ========================================================
   - type: web
     name: nexus-ways-api
     env: node
     plan: free
-    buildCommand: npm ci && npm run build --workspace=@nexus-ways/shared && npm run build --workspace=@nexus-ways/api
+    buildCommand: npm ci && npm run build
     startCommand: npm run start:prod --workspace=@nexus-ways/api
     healthCheckPath: /health
     envVars:

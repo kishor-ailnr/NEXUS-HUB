@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { AppController } from './app.controller';
 import { SupabaseModule } from './supabase/supabase.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
@@ -63,6 +64,7 @@ import { PlatformModule } from './platform/platform.module';
     SeawaysModule,
     PlatformModule,
   ],
+  controllers: [AppController],
   providers: [
     {
       provide: APP_GUARD,
