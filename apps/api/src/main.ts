@@ -95,6 +95,7 @@ async function bootstrap() {
     expressApp.get('*', (req: any, res: any, next: any) => {
       const url = req.path || '';
       const apiPrefixes = [
+        '/api',
         '/auth',
         '/health',
         '/ai',

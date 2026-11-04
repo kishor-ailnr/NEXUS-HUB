@@ -1,8 +1,8 @@
 import { Controller, Get } from '@nestjs/common';
 
-@Controller()
+@Controller('api')
 export class AppController {
-  @Get()
+  @Get('info')
   getRoot() {
     return {
       name: 'NEXUS WAYS Backend API',
@@ -17,3 +17,4 @@ export class AppController {
     };
   }
 }
+
