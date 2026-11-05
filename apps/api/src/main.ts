@@ -17,6 +17,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { AppModule } from './app.module';
 import { initSentry } from './common/sentry';
+import { SpaFallbackFilter } from './common/filters/spa-fallback.filter';
 
 async function bootstrap() {
   initSentry();
@@ -78,12 +79,17 @@ async function bootstrap() {
     }),
   );
 
+  app.useGlobalFilters(new SpaFallbackFilter());
+
   // Serve compiled web frontend SPA when distribution directory exists
   const candidates = [
     path.resolve(process.cwd(), 'apps/web/dist'),
-    path.resolve(__dirname, '../../web/dist'),
+    path.resolve(process.cwd(), '../web/dist'),
+    path.resolve(process.cwd(), 'dist'),
+    path.resolve(__dirname, '../../apps/web/dist'),
     path.resolve(__dirname, '../../../apps/web/dist'),
     path.resolve(__dirname, '../web/dist'),
+    path.resolve(__dirname, '../../web/dist'),
   ];
   const webDistPath = candidates.find((p) => fs.existsSync(p));
 
