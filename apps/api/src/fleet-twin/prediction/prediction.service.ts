@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import {
   MockPredictionEvent,
   MockVehicle,
@@ -13,6 +13,7 @@ import {
 import { WeatherProvider, MockWeatherProvider } from './providers/weather.provider';
 import { TrafficProvider, MockTrafficProvider } from './providers/traffic.provider';
 import { TollProvider, MockTollProvider } from './providers/toll.provider';
+import { WEATHER_PROVIDER, TRAFFIC_PROVIDER, TOLL_PROVIDER } from '../tokens';
 
 export interface PredictionAnalysis {
   events: MockPredictionEvent[];
@@ -33,9 +34,9 @@ export class PredictionService {
   private readonly toll: TollProvider;
 
   constructor(
-    weather?: WeatherProvider,
-    traffic?: TrafficProvider,
-    toll?: TollProvider,
+    @Optional() @Inject(WEATHER_PROVIDER) weather?: WeatherProvider,
+    @Optional() @Inject(TRAFFIC_PROVIDER) traffic?: TrafficProvider,
+    @Optional() @Inject(TOLL_PROVIDER) toll?: TollProvider,
   ) {
     this.weather = weather || new MockWeatherProvider();
     this.traffic = traffic || new MockTrafficProvider();

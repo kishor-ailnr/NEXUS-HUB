@@ -1,3 +1,5 @@
+import { Injectable } from '@nestjs/common';
+
 export interface TollStatus {
   plazaName: string;
   fastagQueueLengthVehicles: number;
@@ -15,6 +17,7 @@ export interface TollProvider {
   ): Promise<TollStatus>;
 }
 
+@Injectable()
 export class MockTollProvider implements TollProvider {
   async getTollStatus(
     plazaName: string,

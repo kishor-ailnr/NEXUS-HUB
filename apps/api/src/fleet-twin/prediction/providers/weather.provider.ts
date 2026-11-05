@@ -1,3 +1,5 @@
+import { Injectable } from '@nestjs/common';
+
 export interface WeatherForecast {
   condition: 'clear' | 'rain' | 'heavy_rain' | 'fog' | 'heatwave' | 'cyclone_alert' | 'ghat_mist';
   temperatureC: number;
@@ -16,6 +18,7 @@ export interface WeatherProvider {
   ): Promise<WeatherForecast>;
 }
 
+@Injectable()
 export class MockWeatherProvider implements WeatherProvider {
   async getWeatherForecast(
     lat: number,

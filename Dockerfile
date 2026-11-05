@@ -40,6 +40,9 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
 RUN npm run build --workspace=@nexus-ways/web && \
     npm run build --workspace=@nexus-ways/api
 
+# Run startup boot smoke test to catch DI / provider dependency errors before runtime
+RUN npm run test:boot --workspace=@nexus-ways/api
+
 # Ensure apps/api/dist/main.js exists at the root of dist
 RUN if [ -f apps/api/dist/src/main.js ] && [ ! -f apps/api/dist/main.js ]; then \
         cp -r apps/api/dist/src/* apps/api/dist/; \

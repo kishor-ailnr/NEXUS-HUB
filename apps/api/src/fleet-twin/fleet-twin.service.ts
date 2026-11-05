@@ -42,8 +42,9 @@ export class FleetTwinService {
   constructor(
     @Optional() private readonly supabaseService: SupabaseService,
     private readonly predictionService: PredictionService,
+    @Optional() private readonly rerouteEngineInjected?: RerouteEngine,
   ) {
-    this.rerouteEngine = new RerouteEngine();
+    this.rerouteEngine = rerouteEngineInjected || new RerouteEngine();
     this.initializeInMemory();
   }
 

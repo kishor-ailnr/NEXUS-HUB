@@ -1,8 +1,10 @@
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { RerouteMode, WhatIfParams } from '@nexus-ways/shared';
 import { CorridorGraph, GraphEdge, INDIAN_CORRIDOR_GRAPHS } from './graph';
 import { WeatherProvider, MockWeatherProvider } from '../prediction/providers/weather.provider';
 import { TrafficProvider, MockTrafficProvider } from '../prediction/providers/traffic.provider';
 import { TollProvider, MockTollProvider } from '../prediction/providers/toll.provider';
+import { WEATHER_PROVIDER, TRAFFIC_PROVIDER, TOLL_PROVIDER } from '../tokens';
 
 export interface ReroutePlanInput {
   corridorKey: string;
@@ -62,15 +64,16 @@ export interface RerouteRecommendation {
   triggerTime: string;
 }
 
+@Injectable()
 export class RerouteEngine {
   private readonly weather: WeatherProvider;
   private readonly traffic: TrafficProvider;
   private readonly toll: TollProvider;
 
   constructor(
-    weather?: WeatherProvider,
-    traffic?: TrafficProvider,
-    toll?: TollProvider,
+    @Optional() @Inject(WEATHER_PROVIDER) weather?: WeatherProvider,
+    @Optional() @Inject(TRAFFIC_PROVIDER) traffic?: TrafficProvider,
+    @Optional() @Inject(TOLL_PROVIDER) toll?: TollProvider,
   ) {
     this.weather = weather || new MockWeatherProvider();
     this.traffic = traffic || new MockTrafficProvider();

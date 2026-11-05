@@ -1,3 +1,5 @@
+import { Injectable } from '@nestjs/common';
+
 export interface TrafficStatus {
   congestionLevel: 'low' | 'moderate' | 'heavy' | 'gridlock';
   delayMinutes: number;
@@ -14,6 +16,7 @@ export interface TrafficProvider {
   ): Promise<TrafficStatus>;
 }
 
+@Injectable()
 export class MockTrafficProvider implements TrafficProvider {
   async getTrafficStatus(
     lat: number,
