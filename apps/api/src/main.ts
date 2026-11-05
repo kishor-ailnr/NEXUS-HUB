@@ -27,7 +27,23 @@ async function bootstrap() {
 
   const port = process.env.PORT
     ? parseInt(process.env.PORT, 10)
-    : configService.get<number>('PORT') || 4000;
+    : configService.get<number>('PORT') || 3000;
+
+  // Validate required environment variables
+  const requiredEnvVars = [
+    'SUPABASE_URL',
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'SUPABASE_JWT_SECRET',
+  ];
+  const missingVars = requiredEnvVars.filter(
+    (key) => !process.env[key] && !configService.get<string>(key),
+  );
+  if (missingVars.length > 0) {
+    logger.warn(
+      `⚠️ Missing environment variable(s): ${missingVars.join(', ')}. ` +
+      `Supabase database operations will fail until these are configured in your deployment settings (Render Environment tab).`,
+    );
+  }
   const defaultOrigins = [
     'https://smart-supply-chain-v3.web.app',
     'https://smart-supply-chain-v3.firebaseapp.com',
@@ -53,7 +69,9 @@ async function bootstrap() {
         origin.endsWith('.web.app') ||
         origin.endsWith('.firebaseapp.com') ||
         origin.endsWith('.vercel.app') ||
-        origin.endsWith('.onrender.com')
+        origin.endsWith('.onrender.com') ||
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1')
       ) {
         return callback(null, true);
       }
