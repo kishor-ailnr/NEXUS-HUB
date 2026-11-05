@@ -19,9 +19,25 @@ COPY packages/shared/ ./packages/shared/
 COPY apps/web/ ./apps/web/
 COPY apps/api/ ./apps/api/
 
-# Build shared library, then web frontend SPA, then backend API (postbuild bundles the SPA)
-RUN npm run build --workspace=@nexus-ways/shared && \
-    npm run build --workspace=@nexus-ways/web && \
+# Build shared library first
+RUN npm run build --workspace=@nexus-ways/shared
+
+# Declare build-time arguments for Vite frontend bundle
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+ARG VITE_API_URL
+ARG VITE_SOCKET_URL
+ARG VITE_SENTRY_DSN
+
+# Expose build args as environment variables for Vite to bake into the static frontend bundle
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_SOCKET_URL=$VITE_SOCKET_URL
+ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
+
+# Build web frontend SPA, then backend API (postbuild bundles the SPA into API public)
+RUN npm run build --workspace=@nexus-ways/web && \
     npm run build --workspace=@nexus-ways/api
 
 # Ensure apps/api/dist/main.js exists at the root of dist

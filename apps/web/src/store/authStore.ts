@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { OrgMode, RegisterRequest, UserProfile, UserRole } from '@nexus-ways/shared';
 import { authService } from '../services/auth';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface AuthState {
   user: UserProfile | null;
@@ -33,7 +34,59 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   initAuth: async () => {
     set({ isLoading: true, error: null });
+    if (!isSupabaseConfigured) {
+      set({
+        user: null,
+        orgId: null,
+        role: null,
+        mode: null,
+        isAuthenticated: false,
+        isLoading: false,
+      });
+      return;
+    }
+
     try {
+      // 1. Check if Supabase just completed an OAuth callback with active session
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData?.session;
+      if (session?.access_token) {
+        let preferredMode: OrgMode | undefined;
+        try {
+          preferredMode = (localStorage.getItem('nw_auth_mode') as OrgMode) || undefined;
+          localStorage.removeItem('nw_auth_mode');
+        } catch {
+          // Ignore localStorage error
+        }
+
+        try {
+          const user = await authService.exchangeSession(
+            session.access_token,
+            session.refresh_token || '',
+            preferredMode,
+          );
+          set({
+            user,
+            orgId: user.orgId,
+            role: user.role,
+            mode: user.organization.mode,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+          });
+
+          // If currently on root '/' or OAuth callback landing, navigate to division dashboard
+          const targetMode = preferredMode || user.organization.mode;
+          if (targetMode && (window.location.pathname === '/' || window.location.hash.includes('access_token'))) {
+            window.location.replace(`/${targetMode}/dashboard`);
+          }
+          return;
+        } catch (exchangeErr) {
+          console.warn('OAuth exchangeSession failed during initAuth, trying fallback:', exchangeErr);
+        }
+      }
+
+      // 2. Fall back to standard session retrieval (cookie or stored token)
       const user = await authService.getMe();
       if (user) {
         set({

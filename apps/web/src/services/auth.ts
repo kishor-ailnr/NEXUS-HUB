@@ -1,5 +1,5 @@
 import { OrgMode, RegisterRequest, UserProfile } from '@nexus-ways/shared';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { apiFetch, setStoredAuthToken, clearStoredAuthToken } from '../lib/api';
 
 export const authService = {
@@ -21,6 +21,12 @@ export const authService = {
    * Sign in with email and password via Supabase, then exchange session with NestJS API
    */
   async signInWithPassword(email: string, password: string, mode?: OrgMode): Promise<UserProfile> {
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        'Supabase authentication is not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your Render Dashboard.',
+      );
+    }
+
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -85,13 +91,24 @@ export const authService = {
    * Initiate Google OAuth redirect flow
    */
   async signInWithGoogle(mode?: OrgMode): Promise<void> {
-    const targetMode = mode || 'roadways';
-    const redirectTo = `${window.location.origin}/${targetMode}/login`;
+    if (!isSupabaseConfigured) {
+      throw new Error(
+        'Supabase authentication is not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your Render Dashboard.',
+      );
+    }
+
+    if (mode) {
+      try {
+        localStorage.setItem('nw_auth_mode', mode);
+      } catch {
+        // Ignore localStorage write failure
+      }
+    }
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo,
+        redirectTo: window.location.origin,
         queryParams: {
           access_type: 'offline',
           prompt: 'consent',

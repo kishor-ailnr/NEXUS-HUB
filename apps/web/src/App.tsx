@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
+import { isSupabaseConfigured } from './lib/supabase';
 import { Hub } from './pages/Hub';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
@@ -19,6 +20,17 @@ export const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
+      {!isSupabaseConfigured && (
+        <div
+          role="alert"
+          className="bg-amber-600/90 text-white px-4 py-2.5 text-xs sm:text-sm text-center font-medium backdrop-blur-md sticky top-0 z-50 flex items-center justify-center gap-2 shadow-lg"
+        >
+          <span>⚠️</span>
+          <span>
+            <strong>Configuration Notice:</strong> Supabase environment variables (<code>VITE_SUPABASE_URL</code> & <code>VITE_SUPABASE_ANON_KEY</code>) must be configured in Render deployment settings for authentication to work.
+          </span>
+        </div>
+      )}
       <BrowserRouter>
         <Routes>
           {/* Real Multimodal Hub Page */}

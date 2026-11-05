@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { isValidOrgMode, OrgMode } from '@nexus-ways/shared';
 import { BackButton } from '../components/BackButton';
 import { useAuthStore } from '../store/authStore';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { NotFound } from './NotFound';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -166,6 +166,13 @@ export const Login: React.FC = () => {
           </CardHeader>
 
           <CardContent className="space-y-4 px-6 pb-6">
+            {!isSupabaseConfigured && (
+              <div className="p-3 bg-amber-500/20 border border-amber-500/40 rounded-xl flex items-center gap-2 text-amber-200 text-xs">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-400" />
+                <span>Authentication is unconfigured. Please add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in Render Environment settings.</span>
+              </div>
+            )}
+
             {errorMsg && (
               <div className="p-3 bg-rose-500/20 border border-rose-500/40 rounded-xl flex items-center gap-2 text-rose-200 text-sm">
                 <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-400" />
