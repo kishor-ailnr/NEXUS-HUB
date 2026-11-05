@@ -25,7 +25,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 
-  const port = configService.get<number>('PORT') || 4000;
+  const port = process.env.PORT
+    ? parseInt(process.env.PORT, 10)
+    : configService.get<number>('PORT') || 4000;
   const defaultOrigins = [
     'https://smart-supply-chain-v3.web.app',
     'https://smart-supply-chain-v3.firebaseapp.com',
@@ -145,8 +147,8 @@ async function bootstrap() {
     });
   }
 
-  await app.listen(port);
-  logger.log(`NEXUS WAYS API listening on port ${port}`);
+  await app.listen(port, '0.0.0.0');
+  logger.log(`NEXUS WAYS API listening on 0.0.0.0:${port}`);
   logger.log(`CORS enabled for origins: ${allowedOrigins.join(', ')}`);
 }
 
