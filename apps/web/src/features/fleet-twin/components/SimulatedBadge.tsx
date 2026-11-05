@@ -42,22 +42,22 @@ export const SimulatedBadge: React.FC<SimulatedBadgeProps> = ({
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/10 shadow-lg text-slate-200">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-sm text-slate-800">
         <div className="flex items-center gap-3">
-          <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400">
-            <Sparkles className="w-4 h-4 animate-spin-slow" />
+          <div className="p-1.5 rounded-lg bg-blue-50 text-blue-600 border border-blue-100">
+            <Sparkles className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-white tracking-wide uppercase">
+              <span className="text-xs font-bold text-slate-900 tracking-wide uppercase">
                 Fleet Digital Twin Simulation
               </span>
-              <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-cyan-950 text-cyan-400 border border-cyan-800">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                 SIMULATION
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
-              <Clock className="w-3 h-3 text-cyan-400/80" />
+            <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+              <Clock className="w-3 h-3 text-slate-400" />
               <span>
                 Deterministic corridor logistics telemetry • 48-hour future prediction
               </span>
@@ -70,16 +70,16 @@ export const SimulatedBadge: React.FC<SimulatedBadgeProps> = ({
             onClick={handleSeed}
             disabled={isSeeding}
             title="Re-seed demo fleet telemetry"
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 font-medium transition-colors cursor-pointer shadow-xs"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isSeeding ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isSeeding ? 'animate-spin' : ''}`} />
             <span>Reset demo data</span>
           </button>
 
           <button
             onClick={() => setIsPurgeModalOpen(true)}
             title="Clear demo data"
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-medium transition-colors cursor-pointer shadow-xs"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>Clear demo data</span>
