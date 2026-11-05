@@ -26,6 +26,8 @@ import { RailwaysModule } from './railways/railways.module';
 import { AirwaysModule } from './airways/airways.module';
 import { SeawaysModule } from './seaways/seaways.module';
 import { PlatformModule } from './platform/platform.module';
+// FLEET-TWIN (mock) - removable
+import { FleetTwinModule } from './fleet-twin/fleet-twin.module';
 
 @Module({
   imports: [
@@ -63,6 +65,8 @@ import { PlatformModule } from './platform/platform.module';
     AirwaysModule,
     SeawaysModule,
     PlatformModule,
+    // FLEET-TWIN (mock) - removable
+    FleetTwinModule,
   ],
   controllers: [AppController],
   providers: [

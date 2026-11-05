@@ -24,6 +24,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { driversService } from '../services/drivers';
+// FLEET-TWIN (mock) - removable
+import { useNavigate } from 'react-router-dom';
+import { fleetTwinApi } from '../features/fleet-twin';
+import { Sparkles } from 'lucide-react';
 
 interface VehicleSidebarProps {
   vehicles: Vehicle[];
@@ -67,6 +71,20 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
   const [assignedDriverId, setAssignedDriverId] = useState('');
 
   const isManager = currentUserRole === 'manager';
+
+  // FLEET-TWIN (mock) - removable
+  const navigate = useNavigate();
+  const [fleetTwinEnabled, setFleetTwinEnabled] = useState(false);
+
+  React.useEffect(() => {
+    let mounted = true;
+    fleetTwinApi.getStatus().then((st) => {
+      if (mounted && st.enabled) {
+        setFleetTwinEnabled(true);
+      }
+    }).catch(() => {});
+    return () => { mounted = false; };
+  }, []);
 
   const handleAddDriver = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,6 +194,29 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
               data-testid="vehicle-search-input"
             />
           </div>
+
+          {/* FLEET-TWIN (mock) - removable */}
+          {fleetTwinEnabled && (
+            <button
+              onClick={() => navigate('/roadways/fleet-twin')}
+              className="w-full p-2.5 rounded-lg bg-gradient-to-r from-cyan-950/80 to-slate-900 border border-cyan-500/40 hover:border-cyan-400 text-left transition-all shadow-sm group"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded bg-cyan-500/20 text-cyan-400 group-hover:scale-105 transition-transform">
+                    <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-cyan-300">Fleet Digital Twin</div>
+                    <div className="text-[10px] text-slate-400">48h AI Simulation & Rerouting</div>
+                  </div>
+                </div>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  MOCK
+                </span>
+              </div>
+            </button>
+          )}
 
           {/* Vehicle List */}
           <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">

@@ -10,6 +10,13 @@ import { NotFound } from './pages/NotFound';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster } from './components/ui/sonner';
+// FLEET-TWIN (mock) - removable
+const FleetTwinListPage = React.lazy(() =>
+  import('./features/fleet-twin').then((m) => ({ default: m.FleetTwinListPage })),
+);
+const VehicleDigitalTwinPage = React.lazy(() =>
+  import('./features/fleet-twin').then((m) => ({ default: m.VehicleDigitalTwinPage })),
+);
 
 export const App: React.FC = () => {
   const { initAuth } = useAuthStore();
@@ -37,6 +44,28 @@ export const App: React.FC = () => {
           <Route path="/" element={<Hub />} />
 
           {/* Parameterized Generic Auth & Operation Routes */}
+          {/* FLEET-TWIN (mock) - removable */}
+          <Route
+            path="/roadways/fleet-twin"
+            element={
+              <ProtectedRoute>
+                <React.Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-cyan-400">Loading Fleet Digital Twin...</div>}>
+                  <FleetTwinListPage />
+                </React.Suspense>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/roadways/fleet-twin/:vehicleId"
+            element={
+              <ProtectedRoute>
+                <React.Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-cyan-400">Loading Vehicle Digital Twin...</div>}>
+                  <VehicleDigitalTwinPage />
+                </React.Suspense>
+              </ProtectedRoute>
+            }
+          />
+
           <Route path="/:mode/login" element={<Login />} />
           <Route path="/:mode/register" element={<Register />} />
           <Route
