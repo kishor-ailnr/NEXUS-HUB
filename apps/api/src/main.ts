@@ -83,15 +83,18 @@ async function bootstrap() {
 
   // Serve compiled web frontend SPA when distribution directory exists
   const candidates = [
+    path.resolve(__dirname, 'public'),
+    path.resolve(__dirname, '../public'),
+    path.resolve(__dirname, '../../public'),
+    path.resolve(process.cwd(), 'public'),
     path.resolve(process.cwd(), 'apps/web/dist'),
     path.resolve(process.cwd(), '../web/dist'),
-    path.resolve(process.cwd(), 'dist'),
-    path.resolve(__dirname, '../../apps/web/dist'),
     path.resolve(__dirname, '../../../apps/web/dist'),
+    path.resolve(__dirname, '../../apps/web/dist'),
     path.resolve(__dirname, '../web/dist'),
     path.resolve(__dirname, '../../web/dist'),
   ];
-  const webDistPath = candidates.find((p) => fs.existsSync(p));
+  const webDistPath = candidates.find((p) => fs.existsSync(path.join(p, 'index.html')));
 
   if (webDistPath) {
     logger.log(`Serving static web assets from: ${webDistPath}`);

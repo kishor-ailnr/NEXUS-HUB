@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ArgumentsHost,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import * as path from 'path';
@@ -11,6 +12,7 @@ import * as fs from 'fs';
 
 @Catch(NotFoundException)
 export class SpaFallbackFilter implements ExceptionFilter {
+  private readonly logger = new Logger(SpaFallbackFilter.name);
   private readonly webDistPath: string | null = null;
   private readonly apiPrefixes = [
     '/api',
@@ -49,15 +51,18 @@ export class SpaFallbackFilter implements ExceptionFilter {
 
   constructor() {
     const candidates = [
+      path.resolve(__dirname, 'public'),
+      path.resolve(__dirname, '../public'),
+      path.resolve(__dirname, '../../public'),
+      path.resolve(process.cwd(), 'public'),
       path.resolve(process.cwd(), 'apps/web/dist'),
       path.resolve(process.cwd(), '../web/dist'),
-      path.resolve(process.cwd(), 'dist'),
-      path.resolve(__dirname, '../../apps/web/dist'),
       path.resolve(__dirname, '../../../apps/web/dist'),
+      path.resolve(__dirname, '../../apps/web/dist'),
       path.resolve(__dirname, '../web/dist'),
       path.resolve(__dirname, '../../web/dist'),
     ];
-    this.webDistPath = candidates.find((p) => fs.existsSync(p)) || null;
+    this.webDistPath = candidates.find((p) => fs.existsSync(path.join(p, 'index.html'))) || null;
   }
 
   catch(exception: NotFoundException, host: ArgumentsHost) {
@@ -83,4 +88,3 @@ export class SpaFallbackFilter implements ExceptionFilter {
     });
   }
 }
-

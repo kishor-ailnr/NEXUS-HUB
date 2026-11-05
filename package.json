@@ -9,8 +9,8 @@
   ],
   "scripts": {
     "dev": "concurrently -n \"api,web\" -c \"cyan,magenta\" \"npm run dev --workspace=@nexus-ways/api\" \"npm run dev --workspace=@nexus-ways/web\"",
-    "build": "npm run build --workspace=@nexus-ways/shared && npm run build --workspace=@nexus-ways/web && npm run build --workspace=@nexus-ways/api",
-    "build:api": "npm run build --workspace=@nexus-ways/shared && npm run build --workspace=@nexus-ways/web && npm run build --workspace=@nexus-ways/api",
+    "build": "npm run build --workspace=@nexus-ways/shared && npm run build --workspace=@nexus-ways/web && npm run build --workspace=@nexus-ways/api && node scripts/copy-web-dist.cjs",
+    "build:api": "npm run build --workspace=@nexus-ways/shared && npm run build --workspace=@nexus-ways/web && npm run build --workspace=@nexus-ways/api && node scripts/copy-web-dist.cjs",
     "build:web": "npm run build --workspace=@nexus-ways/shared && npm run build --workspace=@nexus-ways/web",
     "seed": "node scripts/seed-database.cjs",
     "test": "npm run test --workspaces --if-present",
