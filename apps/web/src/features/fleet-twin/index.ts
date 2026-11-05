@@ -7,4 +7,6 @@ export * from './components/RerouteComparisonCard';
 export * from './components/FleetMapView';
 export * from './pages/FleetTwinListPage';
 export * from './pages/VehicleDigitalTwinPage';
+export * from './dashboard-adapter';
+
 

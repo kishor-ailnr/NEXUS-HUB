@@ -69,6 +69,8 @@ import { SeawaysSidebar } from '../components/SeawaysSidebar';
 import { SeawaysMap } from '../components/SeawaysMap';
 import { CreateVoyageMovementModal } from '../components/CreateVoyageMovementModal';
 import { VoyageMovementDetailsPanel } from '../components/VoyageMovementDetailsPanel';
+// FLEET-TWIN integration - removable
+import { useRoadwaysFleetOverview } from '../features/fleet-twin/dashboard-adapter';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -161,6 +163,18 @@ export const Dashboard: React.FC = () => {
   const [selectedVoyageMovementId, setSelectedVoyageMovementId] = useState<string | null>(null);
   const [isVoyageModalOpen, setIsVoyageModalOpen] = useState(false);
   const [seaTelemetry, setSeaTelemetry] = useState<Record<string, LiveVesselTelemetryPayload>>({});
+
+  // FLEET-TWIN integration - removable
+  const {
+    stats: roadwaysMergedStats,
+    vehicles: roadwaysMergedVehicles,
+    activeTrips: roadwaysMergedTrips,
+  } = useRoadwaysFleetOverview({
+    realStats: stats,
+    realVehicles: vehicles,
+    realTrips: trips,
+    isRoadways: mode === 'roadways',
+  });
 
   if (!isValidOrgMode(mode)) {
     return <NotFound />;
@@ -635,12 +649,13 @@ export const Dashboard: React.FC = () => {
         {/* ROADWAYS WORKSPACE */}
         {isRoadways && (
           <div className="flex-1 p-4 space-y-4 max-w-[1920px] w-full mx-auto flex flex-col">
-            <StatsRow stats={stats} isLoading={isLoadingStats} />
+            {/* FLEET-TWIN integration - removable: merged stats with live simulation */}
+            <StatsRow stats={roadwaysMergedStats || stats} isLoading={isLoadingStats} />
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 flex-1 min-h-[550px]">
               <aside className="lg:col-span-1 min-h-[550px]">
                 <VehicleSidebar
-                  vehicles={vehicles}
+                  vehicles={roadwaysMergedVehicles.length > 0 ? roadwaysMergedVehicles : vehicles}
                   drivers={drivers}
                   selectedVehicleId={selectedVehicleId}
                   onSelectVehicle={handleSelectVehicle}
@@ -653,8 +668,8 @@ export const Dashboard: React.FC = () => {
 
               <div className="lg:col-span-3 min-h-[550px] rounded-xl overflow-hidden border border-slate-800 shadow-xs relative bg-white">
                 <RoadwaysMap
-                  vehicles={vehicles}
-                  activeTrips={trips}
+                  vehicles={roadwaysMergedVehicles.length > 0 ? roadwaysMergedVehicles : vehicles}
+                  activeTrips={roadwaysMergedTrips.length > 0 ? roadwaysMergedTrips : trips}
                   geofences={geofences}
                   ghostPositions={ghostPositions}
                   selectedVehicleId={selectedVehicleId}

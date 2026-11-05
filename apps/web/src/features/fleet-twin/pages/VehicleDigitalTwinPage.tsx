@@ -30,6 +30,8 @@ import { RerouteComparisonCard } from '../components/RerouteComparisonCard';
 import { FleetMapView } from '../components/FleetMapView';
 import { Button } from '../../../components/ui/button';
 import { toast } from 'sonner';
+import twinBgWebp from '../assets/fleet-twin-bg.webp';
+import twinBgJpg from '../assets/fleet-twin-bg.jpg';
 
 export const VehicleDigitalTwinPage: React.FC = () => {
   const { vehicleId } = useParams<{ vehicleId: string }>();
@@ -89,17 +91,30 @@ export const VehicleDigitalTwinPage: React.FC = () => {
       : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8 space-y-6">
+    <div className="relative min-h-screen text-slate-100 p-4 sm:p-6 lg:p-8 space-y-6">
+      {/* Fixed background image with dark overlay for WCAG AA readability */}
+      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+        <picture>
+          <source srcSet={twinBgWebp} type="image/webp" />
+          <img
+            src={twinBgJpg}
+            alt="Fleet Twin Background"
+            className="w-full h-full object-cover object-center scale-105"
+          />
+        </picture>
+        <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-[2px]" />
+      </div>
+
       {/* Top Banner */}
       <SimulatedBadge onRefresh={() => loadTwin()} />
 
       {/* Hero Header Navigation */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900/80 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow-lg">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
             onClick={() => navigate('/roadways/fleet-twin')}
-            className="text-slate-400 hover:text-white p-2 h-9"
+            className="text-slate-400 hover:text-white p-2 h-9 cursor-pointer"
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>
@@ -109,14 +124,14 @@ export const VehicleDigitalTwinPage: React.FC = () => {
               <h1 className="text-2xl font-black text-white font-mono tracking-tight">
                 {vehicle.registration_number}
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-                DIGITAL TWIN
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase bg-cyan-950 text-cyan-400 border border-cyan-800">
+                Simulation
               </span>
               <span className="px-2 py-0.5 rounded text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700 capitalize">
                 {vehicle.truck_type.replace('_', ' ')}
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-300 mt-0.5">
               {fleet?.name} • Base: {fleet?.base_hub}
             </p>
           </div>
@@ -134,7 +149,7 @@ export const VehicleDigitalTwinPage: React.FC = () => {
           <Button
             onClick={() => loadTwin()}
             variant="outline"
-            className="border-slate-800 text-slate-300 hover:text-white text-xs h-9 gap-1.5"
+            className="border-white/20 bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-white text-xs h-9 gap-1.5 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Sync Telemetry</span>
@@ -145,7 +160,7 @@ export const VehicleDigitalTwinPage: React.FC = () => {
       {/* Key Metric KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
         {/* Planned ETA */}
-        <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+        <div className="p-3.5 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/10 shadow-md">
           <div className="text-slate-400 text-xs flex items-center justify-between">
             <span>Planned ETA</span>
             <Clock className="w-3.5 h-3.5 text-slate-400" />
@@ -157,7 +172,7 @@ export const VehicleDigitalTwinPage: React.FC = () => {
         </div>
 
         {/* Predicted ETA */}
-        <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+        <div className="p-3.5 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/10 shadow-md">
           <div className="text-slate-400 text-xs flex items-center justify-between">
             <span>Predicted ETA</span>
             <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -171,7 +186,7 @@ export const VehicleDigitalTwinPage: React.FC = () => {
         </div>
 
         {/* On-Time Probability */}
-        <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+        <div className="p-3.5 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/10 shadow-md">
           <div className="text-slate-400 text-xs flex items-center justify-between">
             <span>On-Time Probability</span>
             <Activity className="w-3.5 h-3.5 text-cyan-400" />
@@ -183,7 +198,7 @@ export const VehicleDigitalTwinPage: React.FC = () => {
         </div>
 
         {/* Dynamic Risk Score */}
-        <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+        <div className="p-3.5 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/10 shadow-md">
           <div className="text-slate-400 text-xs flex items-center justify-between">
             <span>Route Risk Score</span>
             <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
@@ -198,7 +213,7 @@ export const VehicleDigitalTwinPage: React.FC = () => {
         </div>
 
         {/* Driver Rest & Fatigue */}
-        <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 shadow-md col-span-2 md:col-span-1">
+        <div className="p-3.5 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/10 shadow-md col-span-2 md:col-span-1">
           <div className="text-slate-400 text-xs flex items-center justify-between">
             <span>Driver Shift Hours</span>
             <User className="w-3.5 h-3.5 text-emerald-400" />
@@ -255,6 +270,11 @@ export const VehicleDigitalTwinPage: React.FC = () => {
         twinData={twinData}
         onRerouteUpdated={() => loadTwin()}
       />
+
+      {/* Honest Minimal Disclosure Footer */}
+      <footer className="text-center pt-8 pb-4 text-xs text-slate-400/80">
+        Predictions are generated by the NEXUS simulation engine.
+      </footer>
     </div>
   );
 };

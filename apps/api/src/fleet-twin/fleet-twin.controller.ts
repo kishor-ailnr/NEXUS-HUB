@@ -34,6 +34,12 @@ export class FleetTwinController {
     return this.fleetTwinService.getStatus();
   }
 
+  @Get('overview')
+  async getOverview() {
+    this.checkEnabled();
+    return this.fleetTwinService.getOverview();
+  }
+
   @Get('fleets')
   async getFleets() {
     this.checkEnabled();

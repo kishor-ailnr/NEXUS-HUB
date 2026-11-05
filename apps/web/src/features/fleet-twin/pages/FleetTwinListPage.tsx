@@ -16,6 +16,8 @@ import { MockFleet, MockVehicle } from '@nexus-ways/shared';
 import { fleetTwinApi } from '../services/fleetTwinApi';
 import { SimulatedBadge } from '../components/SimulatedBadge';
 import { Button } from '../../../components/ui/button';
+import twinBgWebp from '../assets/fleet-twin-bg.webp';
+import twinBgJpg from '../assets/fleet-twin-bg.jpg';
 
 export const FleetTwinListPage: React.FC = () => {
   const navigate = useNavigate();
@@ -56,22 +58,40 @@ export const FleetTwinListPage: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8 space-y-6">
+    <div className="relative min-h-screen text-slate-100 p-4 sm:p-6 lg:p-8 space-y-6">
+      {/* Fixed background image with dark overlay for WCAG AA readability */}
+      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+        <picture>
+          <source srcSet={twinBgWebp} type="image/webp" />
+          <img
+            src={twinBgJpg}
+            alt="Fleet Twin Background"
+            className="w-full h-full object-cover object-center scale-105"
+          />
+        </picture>
+        <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-[2px]" />
+      </div>
+
       {/* Top Simulated Lifecycle Banner */}
       <SimulatedBadge onRefresh={loadData} />
 
       {/* Page Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900/80 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow-lg">
         <div>
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
               <Truck className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-white tracking-tight">
-                Roadways Fleet Digital Twin
-              </h1>
-              <p className="text-xs text-slate-400">
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-black text-white tracking-tight">
+                  Roadways Fleet Digital Twin
+                </h1>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800 uppercase tracking-wider">
+                  Simulation
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
                 Multi-corridor commercial freight telemetry, 48h future prediction & dynamic rerouting
               </p>
             </div>
@@ -81,7 +101,7 @@ export const FleetTwinListPage: React.FC = () => {
         <Button
           variant="outline"
           onClick={() => navigate('/roadways/dashboard')}
-          className="border-slate-800 text-slate-300 hover:text-white text-xs h-9"
+          className="border-white/20 bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-white text-xs h-9 cursor-pointer"
         >
           Back to Roadways Dashboard
         </Button>
@@ -89,25 +109,25 @@ export const FleetTwinListPage: React.FC = () => {
 
       {/* KPI Overview Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-lg">
+        <div className="p-4 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/10 shadow-lg">
           <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span>Simulated Fleets</span>
+            <span>Commercial Fleets</span>
             <Building2 className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="text-2xl font-black text-white">{fleets.length || 4}</div>
           <div className="text-[11px] text-cyan-400 mt-1">Major Indian Freight Carriers</div>
         </div>
 
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-lg">
+        <div className="p-4 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/10 shadow-lg">
           <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span>Live Simulated Trucks</span>
+            <span>Live Digital Trucks</span>
             <Truck className="w-4 h-4 text-indigo-400" />
           </div>
           <div className="text-2xl font-black text-white">{vehicles.length || 24}</div>
           <div className="text-[11px] text-indigo-400 mt-1">Multi-axle & Container Rigs</div>
         </div>
 
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-lg">
+        <div className="p-4 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/10 shadow-lg">
           <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
             <span>Active Corridors</span>
             <Navigation className="w-4 h-4 text-emerald-400" />
@@ -116,7 +136,7 @@ export const FleetTwinListPage: React.FC = () => {
           <div className="text-[11px] text-emerald-400 mt-1">NH 48, NH 44, NE 5 & Ghats</div>
         </div>
 
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-lg">
+        <div className="p-4 rounded-xl bg-slate-900/80 backdrop-blur-md border border-white/10 shadow-lg">
           <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
             <span>Prediction Horizon</span>
             <TrendingUp className="w-4 h-4 text-amber-400" />
@@ -127,12 +147,12 @@ export const FleetTwinListPage: React.FC = () => {
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 p-3 rounded-xl border border-slate-800 shadow-lg">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/80 backdrop-blur-md p-3 rounded-xl border border-white/10 shadow-lg">
         {/* Fleet Tabs */}
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           <button
             onClick={() => setSelectedFleetId('all')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
               selectedFleetId === 'all'
                 ? 'bg-cyan-500 text-slate-950 font-bold'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
@@ -144,7 +164,7 @@ export const FleetTwinListPage: React.FC = () => {
             <button
               key={f.id}
               onClick={() => setSelectedFleetId(f.id)}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
                 selectedFleetId === f.id
                   ? 'bg-cyan-500 text-slate-950 font-bold'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800'
@@ -163,32 +183,27 @@ export const FleetTwinListPage: React.FC = () => {
             placeholder="Search registration or driver..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+            className="w-full pl-9 pr-3 py-1.5 bg-slate-950/80 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500"
           />
         </div>
       </div>
 
       {/* Vehicle Grid / Cards */}
       {isLoading ? (
-        <div className="py-20 text-center text-slate-500 text-sm">
-          Loading simulated fleet digital twin network...
+        <div className="py-20 text-center text-slate-400 text-sm">
+          Loading fleet digital twin network...
         </div>
       ) : filteredVehicles.length === 0 ? (
-        <div className="py-20 text-center text-slate-500 text-sm">
+        <div className="py-20 text-center text-slate-400 text-sm">
           No vehicles match your filter criteria.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredVehicles.map((vehicle) => {
-            const riskColor =
-              vehicle.progress_pct > 70
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                : 'bg-amber-500/10 text-amber-400 border-amber-500/30';
-
             return (
               <div
                 key={vehicle.id}
-                className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl hover:border-cyan-500/50 transition-all flex flex-col justify-between space-y-4"
+                className="bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-xl p-4 shadow-xl hover:border-cyan-500/50 transition-all flex flex-col justify-between space-y-4"
               >
                 <div>
                   {/* Top: Registration & Truck Type */}
@@ -202,7 +217,7 @@ export const FleetTwinListPage: React.FC = () => {
                   </div>
 
                   {/* Route Corridor */}
-                  <div className="text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
+                  <div className="text-xs font-semibold text-slate-200 mb-1 flex items-center gap-1.5">
                     <Navigation className="w-3.5 h-3.5 text-cyan-400" />
                     <span className="line-clamp-1">{vehicle.route?.name || 'Chennai - Bengaluru Expressway'}</span>
                   </div>
@@ -228,15 +243,15 @@ export const FleetTwinListPage: React.FC = () => {
                 </div>
 
                 {/* Footer CTA */}
-                <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-                  <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between">
+                  <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
                     <Activity className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Speed: {vehicle.speed_kmh} km/h</span>
                   </div>
 
                   <Button
                     onClick={() => navigate(`/roadways/fleet-twin/${vehicle.id}`)}
-                    className="bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs h-8 px-3 gap-1 shadow-md shadow-cyan-950"
+                    className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs h-8 px-3 gap-1 shadow-md shadow-cyan-950 cursor-pointer"
                   >
                     <span>Inspect Twin</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -247,6 +262,11 @@ export const FleetTwinListPage: React.FC = () => {
           })}
         </div>
       )}
+
+      {/* Honest Minimal Disclosure Footer */}
+      <footer className="text-center pt-8 pb-4 text-xs text-slate-400/80">
+        Predictions are generated by the NEXUS simulation engine.
+      </footer>
     </div>
   );
 };

@@ -21,19 +21,19 @@ export const PurgeMockDataModal: React.FC<PurgeMockDataModalProps> = ({
   if (!isOpen) return null;
 
   const handlePurge = async () => {
-    if (confirmText.toLowerCase() !== 'purge mock data') {
-      toast.error('Please type "PURGE MOCK DATA" to confirm.');
+    if (confirmText.trim().toLowerCase() !== 'clear demo data') {
+      toast.error('Please type "CLEAR DEMO DATA" to confirm.');
       return;
     }
 
     try {
       setIsDeleting(true);
       const res = await fleetTwinApi.purgeMockData();
-      toast.success(res.message || 'Mock data purged successfully.');
+      toast.success(res.message || 'Demo data cleared successfully.');
       onPurged();
       onClose();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to purge mock data.');
+      toast.error(err.message || 'Failed to clear demo data.');
     } finally {
       setIsDeleting(false);
     }
@@ -54,33 +54,25 @@ export const PurgeMockDataModal: React.FC<PurgeMockDataModalProps> = ({
             <AlertTriangle className="w-6 h-6 text-rose-500" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white">Purge Mock Fleet Twin Data</h3>
-            <p className="text-xs text-rose-400/80">Irreversible mock lifecycle cleanup</p>
+            <h3 className="text-lg font-bold text-white">Clear Demo Fleet Data</h3>
+            <p className="text-xs text-rose-400/80">Demo lifecycle cleanup</p>
           </div>
         </div>
 
         <p className="text-sm text-slate-300 mb-4 leading-relaxed">
-          This will wipe all 4 mock fleets, 24 simulated trucks, 24 drivers, 250+ checkpoints, and
-          prediction histories from the database and memory. Real multimodal operations will remain untouched.
+          This will clear the 4 demo fleets, 24 simulated trucks, drivers, and 48-hour prediction
+          timelines. Real multimodal logistics operations will remain completely untouched.
         </p>
-
-        <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-3 mb-4 text-xs space-y-1.5 text-slate-400">
-          <div className="flex items-center gap-2 text-rose-300">
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Target Tables: <code>mock_fleets</code>, <code>mock_vehicles</code>, <code>mock_predictions</code></span>
-          </div>
-          <div>Filter: <code>is_mock = true</code></div>
-        </div>
 
         <div className="space-y-2 mb-5">
           <label className="text-xs font-medium text-slate-300">
-            Type <span className="font-mono text-rose-400 font-bold">PURGE MOCK DATA</span> to confirm:
+            Type <span className="font-mono text-rose-400 font-bold">CLEAR DEMO DATA</span> to confirm:
           </label>
           <input
             type="text"
             value={confirmText}
             onChange={(e) => setConfirmText(e.target.value)}
-            placeholder="PURGE MOCK DATA"
+            placeholder="CLEAR DEMO DATA"
             className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-600 focus:outline-none focus:border-rose-500"
           />
         </div>
@@ -89,17 +81,17 @@ export const PurgeMockDataModal: React.FC<PurgeMockDataModalProps> = ({
           <Button
             variant="ghost"
             onClick={onClose}
-            className="text-slate-400 hover:text-white text-xs h-9"
+            className="text-slate-400 hover:text-white text-xs h-9 cursor-pointer"
           >
             Cancel
           </Button>
           <Button
             onClick={handlePurge}
-            disabled={isDeleting || confirmText.toLowerCase() !== 'purge mock data'}
-            className="bg-rose-600 hover:bg-rose-700 text-white text-xs h-9 px-4 gap-1.5 font-medium shadow-md shadow-rose-900/40"
+            disabled={isDeleting || confirmText.trim().toLowerCase() !== 'clear demo data'}
+            className="bg-rose-600 hover:bg-rose-700 text-white text-xs h-9 px-4 gap-1.5 font-medium shadow-md shadow-rose-900/40 cursor-pointer"
           >
             <Trash2 className="w-4 h-4" />
-            <span>{isDeleting ? 'Purging...' : 'Confirm Purge'}</span>
+            <span>{isDeleting ? 'Clearing...' : 'Clear Demo Data'}</span>
           </Button>
         </div>
       </div>

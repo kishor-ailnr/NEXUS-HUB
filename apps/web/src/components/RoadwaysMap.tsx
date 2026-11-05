@@ -124,10 +124,20 @@ export const RoadwaysMap: React.FC<RoadwaysMapProps> = ({
   useEffect(() => {
     if (!mapInstanceRef.current || !routesGroupRef.current) return;
 
+    // Clear existing
     routesGroupRef.current.clearLayers();
 
-    activeTrips.forEach((trip) => {
+    // If a vehicle is selected, highlight its route with prominence
+    const targetTrips = selectedVehicleId
+      ? activeTrips.filter((t) => t.vehicle_id === selectedVehicleId)
+      : activeTrips;
+
+    // If nothing found for selected vehicle, show all active trips
+    const tripsToRender = targetTrips.length > 0 ? targetTrips : activeTrips;
+
+    tripsToRender.forEach((trip) => {
       if (trip.status !== 'in_transit' && trip.status !== 'planned') return;
+      const isSelected = selectedVehicleId === trip.vehicle_id;
 
       // Draw route polyline if coordinates available
       if (trip.route_geometry?.coordinates && trip.route_geometry.coordinates.length > 0) {
@@ -135,15 +145,15 @@ export const RoadwaysMap: React.FC<RoadwaysMapProps> = ({
 
         const isOsrm = trip.route_geometry.routing_source === 'osrm';
         const polyline = L.polyline(latLngs, {
-          color: isOsrm ? '#2563eb' : '#f59e0b',
-          weight: 4,
-          opacity: 0.8,
-          dashArray: isOsrm ? undefined : '6, 6',
+          color: isSelected ? '#0284c7' : isOsrm ? '#3b82f6' : '#f59e0b',
+          weight: isSelected ? 5 : 3.5,
+          opacity: isSelected ? 0.95 : 0.6,
+          dashArray: isOsrm || isSelected ? undefined : '6, 6',
         });
 
         polyline.bindTooltip(
           `<strong>${trip.origin_label} &rarr; ${trip.destination_label}</strong><br/>` +
-          `Distance: ${trip.distance_km || 0} km | Route: ${isOsrm ? 'OSRM Road' : 'Fallback Straight-line'}`,
+          `Distance: ${trip.distance_km || 0} km | Route: ${isOsrm ? 'OSRM Highway' : 'Corridor'}`,
           { sticky: true },
         );
 
@@ -154,9 +164,9 @@ export const RoadwaysMap: React.FC<RoadwaysMapProps> = ({
       if (trip.checkpoints && trip.checkpoints.length > 0) {
         trip.checkpoints.forEach((cp, idx) => {
           const cpMarker = L.circleMarker([cp.lat, cp.lng], {
-            radius: 5,
-            color: '#1e293b',
-            fillColor: '#f8fafc',
+            radius: isSelected ? 6 : 4,
+            color: isSelected ? '#0369a1' : '#1e293b',
+            fillColor: isSelected ? '#38bdf8' : '#f8fafc',
             fillOpacity: 1,
             weight: 2,
           });
@@ -166,7 +176,7 @@ export const RoadwaysMap: React.FC<RoadwaysMapProps> = ({
         });
       }
     });
-  }, [activeTrips]);
+  }, [activeTrips, selectedVehicleId]);
 
   // 4. Render Digital Twin Ghost Markers
   useEffect(() => {
@@ -252,12 +262,36 @@ export const RoadwaysMap: React.FC<RoadwaysMapProps> = ({
       bounds.extend([lat, lng]);
 
       const isSelected = selectedVehicleId === v.id;
-      const isActive = v.status === 'active';
+      const isTwin = (v as any).is_twin;
+      const twinStatus = (v as any).twin_status;
+
+      // Status color resolution
+      let markerColor = '#10b981'; // Green for active / en_route
+      let statusLabel: string = v.status;
+
+      if (twinStatus) {
+        if (twinStatus === 'delayed') {
+          markerColor = '#f59e0b'; // Amber
+          statusLabel = 'delayed';
+        } else if (twinStatus === 'resting') {
+          markerColor = '#3b82f6'; // Blue
+          statusLabel = 'resting';
+        } else if (twinStatus === 'idle') {
+          markerColor = '#64748b'; // Slate
+          statusLabel = 'idle';
+        } else {
+          markerColor = '#10b981'; // Green en_route
+          statusLabel = 'en route';
+        }
+      } else if (v.status === 'maintenance') {
+        markerColor = '#f43f5e';
+      } else if (v.status === 'idle') {
+        markerColor = '#64748b';
+      }
+
       const isConvoy = !!v.convoy_name;
       const speed = gps?.speed_kmh || 0;
-
-      const markerColor = isActive ? '#10b981' : v.status === 'maintenance' ? '#f59e0b' : '#64748b';
-      const borderColor = isConvoy ? '#8b5cf6' : isSelected ? '#3b82f6' : '#ffffff';
+      const borderColor = isConvoy ? '#8b5cf6' : isSelected ? '#0284c7' : '#ffffff';
 
       const customIcon = L.divIcon({
         className: 'vehicle-marker',
@@ -266,8 +300,8 @@ export const RoadwaysMap: React.FC<RoadwaysMapProps> = ({
             position: relative;
             background: ${markerColor};
             border: 2px solid ${borderColor};
-            width: ${isSelected ? '26px' : '22px'};
-            height: ${isSelected ? '26px' : '22px'};
+            width: ${isSelected ? '28px' : '22px'};
+            height: ${isSelected ? '28px' : '22px'};
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -285,41 +319,51 @@ export const RoadwaysMap: React.FC<RoadwaysMapProps> = ({
               <circle cx="7" cy="18" r="2"/>
             </svg>
             ${
-              isActive
+              twinStatus === 'en_route' || v.status === 'active'
                 ? `<span style="position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #22c55e; border-radius: 50%; border: 1.5px solid white;"></span>`
                 : ''
             }
           </div>
         `,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13],
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
       });
 
       const marker = L.marker([lat, lng], { icon: customIcon });
 
+      const routeDesc =
+        (v as any).route_short_name ||
+        (v.active_trip
+          ? `${v.active_trip.origin_label} &rarr; ${v.active_trip.destination_label}`
+          : 'Base Depot');
+      const nextCp = (v as any).next_checkpoint_name;
+      const truckType = (v as any).truck_type_label || v.vehicle_type;
+
       const popupHtml = `
         <div style="font-family: sans-serif; min-width: 220px; padding: 2px;">
           <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 6px;">
-            <strong style="font-size: 13px; color: #0f172a;">${v.registration_number}</strong>
-            <span style="font-size: 10px; text-transform: uppercase; background: ${markerColor}20; color: ${markerColor}; font-weight: bold; padding: 2px 6px; border-radius: 4px;">
-              ${v.status}
+            <strong style="font-size: 13px; color: #0f172a; font-family: monospace;">${v.registration_number}</strong>
+            <span style="font-size: 10px; text-transform: uppercase; background: ${markerColor}20; color: ${markerColor}; font-weight: bold; padding: 2px 6px; border-radius: 4px; border: 1px solid ${markerColor}40;">
+              ${statusLabel}
             </span>
           </div>
           <div style="font-size: 11px; color: #475569; line-height: 1.5;">
             <div><strong>Driver:</strong> ${v.driver?.user?.full_name || v.driver?.license_number || 'Unassigned'}</div>
-            <div><strong>Type:</strong> ${v.vehicle_type}</div>
-            <div><strong>Simulated Speed:</strong> <span style="font-weight: 600; color: #0284c7;">${speed} km/h</span></div>
-            ${v.convoy_name ? `<div><strong>Convoy:</strong> <span style="color: #7c3aed; font-weight: 600;">${v.convoy_name}</span></div>` : ''}
+            <div><strong>Type:</strong> ${truckType}</div>
+            <div><strong>Route:</strong> ${routeDesc}</div>
+            <div><strong>Live Speed:</strong> <span style="font-weight: 600; color: #0284c7;">${speed} km/h</span></div>
+            ${nextCp ? `<div><strong>Next:</strong> <span style="font-weight: 600; color: #334155;">${nextCp}</span></div>` : ''}
             ${
-              v.active_trip
-                ? `<div style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed #cbd5e1;">
-                    <strong>Destination:</strong> ${v.active_trip.destination_label}<br/>
-                    <strong>Trip ETA:</strong> ~${v.active_trip.duration_minutes || 0} mins
+              isTwin
+                ? `<div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid #f1f5f9; text-align: right;">
+                    <a href="/roadways/fleet-twin/${v.id}" style="display: inline-block; padding: 4px 10px; background: #0284c7; color: white; border-radius: 6px; font-weight: 600; text-decoration: none; font-size: 11px;">
+                      Inspect Twin &rarr;
+                    </a>
                    </div>`
-                : '<div style="color: #94a3b8; font-style: italic; margin-top: 4px;">No active trip</div>'
+                : ''
             }
-            <div style="margin-top: 6px; font-size: 9px; color: #94a3b8; text-align: right;">
-              [Simulated Telemetry]
+            <div style="margin-top: 4px; font-size: 9px; color: #94a3b8; text-align: right;">
+              [Live Telemetry]
             </div>
           </div>
         </div>
@@ -340,7 +384,7 @@ export const RoadwaysMap: React.FC<RoadwaysMapProps> = ({
     });
 
     if (bounds.isValid() && vehicles.length > 0 && !selectedVehicleId) {
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 10 });
     }
   }, [vehicles, selectedVehicleId, onSelectVehicle]);
 

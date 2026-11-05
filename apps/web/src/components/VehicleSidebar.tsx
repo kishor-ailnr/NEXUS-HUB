@@ -21,6 +21,8 @@ import {
   Eye,
   EyeOff,
   X,
+  ArrowUpRight,
+  Navigation,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { driversService } from '../services/drivers';
@@ -195,25 +197,28 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
             />
           </div>
 
-          {/* FLEET-TWIN (mock) - removable */}
+          {/* FLEET-TWIN integration - removable */}
           {fleetTwinEnabled && (
             <button
               onClick={() => navigate('/roadways/fleet-twin')}
-              className="w-full p-2.5 rounded-lg bg-gradient-to-r from-cyan-950/80 to-slate-900 border border-cyan-500/40 hover:border-cyan-400 text-left transition-all shadow-sm group"
+              className="w-full p-2.5 rounded-lg bg-slate-50 hover:bg-white border border-slate-200 hover:border-blue-400 text-left transition-all shadow-xs hover:shadow-sm group cursor-pointer"
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="p-1 rounded bg-cyan-500/20 text-cyan-400 group-hover:scale-105 transition-transform">
-                    <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-md bg-blue-50 text-blue-600 border border-blue-100 group-hover:scale-105 transition-transform">
+                    <Sparkles className="w-3.5 h-3.5" />
                   </div>
                   <div>
-                    <div className="text-xs font-bold text-cyan-300">Fleet Digital Twin</div>
-                    <div className="text-[10px] text-slate-400">48h AI Simulation & Rerouting</div>
+                    <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <span>Fleet Digital Twin</span>
+                      <span className="text-[9px] font-medium px-1.5 py-0.2 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                        Live Twin
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500">48h Predictive Timeline & Rerouting</div>
                   </div>
                 </div>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  MOCK
-                </span>
+                <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
               </div>
             </button>
           )}
@@ -227,8 +232,24 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
             ) : (
               filteredVehicles.map((v) => {
                 const isSelected = selectedVehicleId === v.id;
-                const isActive = v.status === 'active';
+                const isTwin = (v as any).is_twin;
+                const twinStatus = (v as any).twin_status;
+                const isDelayed = twinStatus === 'delayed';
+                const isResting = twinStatus === 'resting';
+                const isEnRoute = twinStatus === 'en_route';
+                const isIdle = twinStatus === 'idle' || v.status === 'idle';
+                const isActive = isEnRoute || (!twinStatus && v.status === 'active');
                 const isMaintenance = v.status === 'maintenance';
+
+                const truckType = (v as any).truck_type_label || v.vehicle_type;
+                const routeShortName =
+                  (v as any).route_short_name ||
+                  (v.active_trip
+                    ? `${v.active_trip.origin_label} → ${v.active_trip.destination_label}`
+                    : undefined);
+                const progressPct = (v as any).progress_pct;
+                const nextCheckpoint = (v as any).next_checkpoint_name;
+                const predictedEta = (v as any).predicted_eta;
 
                 return (
                   <div
@@ -242,58 +263,124 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
                     data-testid={`vehicle-card-${v.id}`}
                   >
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-bold text-slate-900 tracking-wide">
+                      <span className="font-bold text-slate-900 tracking-wide font-mono">
                         {v.registration_number}
                       </span>
-                      <Badge
-                        variant={isActive ? 'default' : isMaintenance ? 'destructive' : 'secondary'}
-                        className={`text-[10px] uppercase font-semibold px-1.5 py-0.2 ${
-                          isActive
-                            ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                      <span
+                        className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full border ${
+                          isDelayed
+                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                            : isResting
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : isActive
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             : isMaintenance
-                            ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                            : 'bg-slate-100 text-slate-600'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200'
+                            : 'bg-slate-100 text-slate-600 border-slate-200'
                         }`}
                       >
-                        {v.status}
-                      </Badge>
+                        {isDelayed
+                          ? 'Delayed'
+                          : isResting
+                          ? 'Resting'
+                          : isActive
+                          ? 'En Route'
+                          : isIdle
+                          ? 'Idle'
+                          : v.status}
+                      </span>
                     </div>
 
-                    <div className="space-y-1 text-slate-500 text-[11px]">
-                      <div className="flex items-center justify-between">
-                        <span className="flex items-center gap-1">
-                          <User className="w-3 h-3 text-slate-400" />
-                          <span className="truncate max-w-[120px]">
-                            {v.driver?.user?.full_name || v.driver?.license_number || 'Unassigned'}
-                          </span>
-                        </span>
+                    <div className="space-y-1.5 text-slate-500 text-[11px]">
+                      {/* Truck Type & Route */}
+                      <div className="flex items-center justify-between text-slate-700">
+                        <span className="font-medium truncate max-w-[150px]">{truckType}</span>
                         {v.latest_gps?.speed_kmh !== undefined && (
-                          <span className="font-semibold text-blue-600 flex items-center gap-1">
+                          <span className="font-semibold text-blue-600 flex items-center gap-1 shrink-0 font-mono">
                             <Radio className="w-2.5 h-2.5 animate-pulse text-emerald-500" />
                             {v.latest_gps.speed_kmh} km/h
                           </span>
                         )}
                       </div>
 
-                      {v.convoy_name && (
-                        <div className="flex items-center gap-1 text-purple-600 font-medium">
-                          <Users className="w-3 h-3" />
-                          <span>Convoy: {v.convoy_name}</span>
+                      {/* Corridor route */}
+                      {routeShortName && (
+                        <div className="flex items-center gap-1 text-slate-600 font-medium truncate">
+                          <Navigation className="w-3 h-3 text-cyan-600 shrink-0" />
+                          <span className="truncate">{routeShortName}</span>
                         </div>
                       )}
 
-                      {v.active_trip && (
-                        <div className="text-[10px] text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100 flex items-center justify-between mt-1">
-                          <span className="truncate max-w-[140px]">
-                            &rarr; {v.active_trip.destination_label}
+                      {/* Driver */}
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <User className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="truncate max-w-[130px]">
+                            {v.driver?.user?.full_name || v.driver?.license_number || 'Unassigned'}
                           </span>
-                          <span className="text-emerald-600 font-bold">In Transit</span>
+                        </span>
+                        {v.convoy_name && (
+                          <span className="text-purple-600 font-medium text-[10px]">
+                            {v.convoy_name}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Progress bar */}
+                      {progressPct !== undefined && (
+                        <div className="pt-0.5 space-y-1">
+                          <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                            <span>Corridor Progress</span>
+                            <span className="font-bold text-slate-700">{Math.round(progressPct)}%</span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                isDelayed
+                                  ? 'bg-amber-500'
+                                  : isResting
+                                  ? 'bg-blue-500'
+                                  : 'bg-emerald-500'
+                              }`}
+                              style={{ width: `${Math.min(100, Math.max(0, progressPct))}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Next Checkpoint and ETA */}
+                      {nextCheckpoint && (
+                        <div className="text-[10px] text-slate-600 bg-slate-50 px-2 py-1 rounded border border-slate-200/80 flex items-center justify-between mt-1">
+                          <span className="truncate max-w-[150px] flex items-center gap-1 font-medium">
+                            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                            Next: {nextCheckpoint}
+                          </span>
+                          {predictedEta && (
+                            <span className="text-slate-500 font-mono shrink-0 ml-1">
+                              ETA {new Date(predictedEta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
 
-                    {/* Quick Trip Start action for idle vehicles */}
-                    {isManager && v.status === 'idle' && (
+                    {/* Actions: Inspect Twin button for twin vehicles; Start Trip for real vehicles */}
+                    {isTwin ? (
+                      <div className="mt-2.5 pt-2 border-t border-slate-100 flex justify-end">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/roadways/fleet-twin/${v.id}`);
+                          }}
+                          className="h-6 text-[10px] px-2.5 gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300 font-semibold cursor-pointer"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>Inspect Twin</span>
+                        </Button>
+                      </div>
+                    ) : isManager && v.status === 'idle' ? (
                       <div className="mt-2 pt-2 border-t border-slate-100 flex justify-end">
                         <Button
                           size="sm"
@@ -308,7 +395,7 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
                           <span>Start Trip</span>
                         </Button>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 );
               })

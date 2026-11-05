@@ -199,3 +199,68 @@ export interface FleetTwinStatus {
   last_seeded_at?: string;
 }
 
+export interface FleetTwinVehicleOverview {
+  id: string;
+  registration_number: string;
+  truck_type: string;
+  status: TruckStatus;
+  speed_kmh: number;
+  current_lat: number;
+  current_lng: number;
+  progress_pct: number;
+  capacity_tons: number;
+  current_load_tons: number;
+  fuel_type: FuelType;
+  driver?: {
+    id: string;
+    name: string;
+    phone: string;
+    license_number: string;
+    hours_driven_today: number;
+    rest_hours_compliance: RestCompliance;
+  };
+  route?: {
+    id: string;
+    name: string;
+    corridor: string;
+    origin_city: string;
+    destination_city: string;
+    total_distance_km: number;
+    planned_eta: string;
+    waypoints?: [number, number][];
+  };
+  fleet_name?: string;
+  current_checkpoint_name?: string;
+  next_checkpoint_name?: string;
+  next_checkpoint_distance_km?: number;
+  predicted_eta?: string;
+  total_predicted_delay_minutes?: number;
+  risk_score?: number;
+  is_twin: boolean;
+}
+
+export interface FleetTwinOverview {
+  enabled: boolean;
+  timestamp: string;
+  simulated_clock: string;
+  totals: {
+    active_vehicles: number;
+    total_fleet: number;
+    active_alerts: number;
+    average_speed_kmh: number;
+    arrived_today: number;
+    departed_today: number;
+  };
+  vehicles: FleetTwinVehicleOverview[];
+  alerts: {
+    vehicle_id: string;
+    registration_number: string;
+    event_type: string;
+    severity: PredictionEventSeverity;
+    delay_minutes: number;
+    description: string;
+    location_name: string;
+    hours_from_now: number;
+  }[];
+}
+

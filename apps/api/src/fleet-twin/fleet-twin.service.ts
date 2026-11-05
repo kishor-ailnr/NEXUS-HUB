@@ -10,6 +10,8 @@ import {
   WhatIfParams,
   VehicleDigitalTwinData,
   FleetTwinStatus,
+  FleetTwinOverview,
+  FleetTwinVehicleOverview,
   DEFAULT_WHAT_IF_PARAMS,
 } from '@nexus-ways/shared';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -79,6 +81,176 @@ export class FleetTwinService {
       total_fleets: fleets.length,
       total_vehicles: vehicles.length,
       last_seeded_at: this.lastSeededAt,
+    };
+  }
+
+  /**
+   * Aggregate overview for Roadways Dashboard
+   */
+  async getOverview(): Promise<FleetTwinOverview> {
+    const enabled = this.isEnabled();
+    const now = new Date();
+    const simulatedClock = now.toISOString();
+
+    if (!enabled || this.isPurged) {
+      return {
+        enabled: enabled && !this.isPurged,
+        timestamp: simulatedClock,
+        simulated_clock: simulatedClock,
+        totals: {
+          active_vehicles: 0,
+          total_fleet: 0,
+          active_alerts: 0,
+          average_speed_kmh: 0,
+          arrived_today: 0,
+          departed_today: 0,
+        },
+        vehicles: [],
+        alerts: [],
+      };
+    }
+
+    const rawVehicles = await this.getAllVehicles();
+    const overviewVehicles: FleetTwinVehicleOverview[] = [];
+    const highAlerts: FleetTwinOverview['alerts'] = [];
+
+    let movingSpeedSum = 0;
+    let movingCount = 0;
+    let activeVehiclesCount = 0;
+    let departedCount = 0;
+    let arrivedCount = 0;
+
+    for (const v of rawVehicles) {
+      const driver = v.driver || this.inMemoryDrivers.find((d) => d.id === v.driver_id);
+      const route = v.route || this.inMemoryRoutes.find((r) => r.id === v.route_id);
+      const fleet = v.fleet || this.inMemoryFleets.find((f) => f.id === v.fleet_id);
+      const checkpoints = route ? await this.getCheckpointsByRoute(route.id) : [];
+
+      const totalDist = route?.total_distance_km || 500;
+      const currentDist = (v.progress_pct / 100) * totalDist;
+      const passed = checkpoints.filter((cp) => cp.distance_from_start_km <= currentDist);
+      const currentCheckpoint = passed.length > 0 ? passed[passed.length - 1] : checkpoints[0] || null;
+      const nextCheckpoint = checkpoints.find((cp) => cp.distance_from_start_km > currentDist) || null;
+      const nextDistance = nextCheckpoint ? Math.max(0, Math.round(nextCheckpoint.distance_from_start_km - currentDist)) : 0;
+
+      // Deterministic timeline analysis
+      let predictedEta = route?.planned_eta || new Date(Date.now() + 6 * 3600000).toISOString();
+      let totalDelay = 0;
+      let riskScore = 20;
+
+      if (route && driver) {
+        try {
+          const analysis = await this.predictionService.generate48hTimeline(
+            v,
+            route,
+            checkpoints,
+            driver,
+            DEFAULT_WHAT_IF_PARAMS,
+            now,
+          );
+          predictedEta = analysis.predictedEta;
+          totalDelay = analysis.totalDelayMinutes;
+          riskScore = analysis.riskScore;
+
+          for (const ev of analysis.events) {
+            if ((ev.severity === 'high' || ev.severity === 'critical') && ev.hours_from_now <= 6) {
+              highAlerts.push({
+                vehicle_id: v.id,
+                registration_number: v.registration_number,
+                event_type: ev.event_type,
+                severity: ev.severity,
+                delay_minutes: ev.delay_minutes,
+                description: ev.description,
+                location_name: ev.location_name,
+                hours_from_now: ev.hours_from_now,
+              });
+            }
+          }
+        } catch (err) {
+          this.logger.debug(`Timeline analysis failed for vehicle ${v.id}: ${err}`);
+        }
+      }
+
+      const isMoving = (v.speed_kmh || 0) > 0;
+      if (isMoving) {
+        movingSpeedSum += v.speed_kmh;
+        movingCount++;
+      }
+
+      const isActive = isMoving || v.status === 'en_route' || v.status === 'delayed';
+      if (isActive) {
+        activeVehiclesCount++;
+      }
+
+      if (v.progress_pct > 0 || v.status === 'en_route' || v.status === 'delayed' || v.status === 'resting') {
+        departedCount++;
+      }
+      if (v.progress_pct >= 90) {
+        arrivedCount++;
+      }
+
+      overviewVehicles.push({
+        id: v.id,
+        registration_number: v.registration_number,
+        truck_type: v.truck_type,
+        status: v.status,
+        speed_kmh: v.speed_kmh,
+        current_lat: v.current_lat,
+        current_lng: v.current_lng,
+        progress_pct: v.progress_pct,
+        capacity_tons: v.capacity_tons,
+        current_load_tons: v.current_load_tons,
+        fuel_type: v.fuel_type,
+        driver: driver
+          ? {
+              id: driver.id,
+              name: driver.name,
+              phone: driver.phone,
+              license_number: driver.license_number,
+              hours_driven_today: driver.hours_driven_today,
+              rest_hours_compliance: driver.rest_hours_compliance,
+            }
+          : undefined,
+        route: route
+          ? {
+              id: route.id,
+              name: route.name,
+              corridor: route.corridor,
+              origin_city: route.origin_city,
+              destination_city: route.destination_city,
+              total_distance_km: route.total_distance_km,
+              planned_eta: route.planned_eta,
+              waypoints: checkpoints.map((cp) => [cp.latitude, cp.longitude] as [number, number]),
+            }
+          : undefined,
+        fleet_name: fleet?.name,
+        current_checkpoint_name: currentCheckpoint?.name,
+        next_checkpoint_name: nextCheckpoint?.name,
+        next_checkpoint_distance_km: nextDistance,
+        predicted_eta: predictedEta,
+        total_predicted_delay_minutes: totalDelay,
+        risk_score: riskScore,
+        is_twin: true,
+      });
+    }
+
+    highAlerts.sort((a, b) => a.hours_from_now - b.hours_from_now);
+    const avgSpeed = movingCount > 0 ? Math.round((movingSpeedSum / movingCount) * 10) / 10 : 0;
+
+    return {
+      enabled: true,
+      timestamp: simulatedClock,
+      simulated_clock: simulatedClock,
+      totals: {
+        active_vehicles: activeVehiclesCount,
+        total_fleet: rawVehicles.length,
+        active_alerts: highAlerts.length,
+        average_speed_kmh: avgSpeed,
+        arrived_today: arrivedCount,
+        departed_today: departedCount,
+      },
+      vehicles: overviewVehicles,
+      alerts: highAlerts,
     };
   }
 

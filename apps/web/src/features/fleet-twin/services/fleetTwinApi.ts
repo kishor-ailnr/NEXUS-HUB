@@ -8,9 +8,31 @@ import {
   WhatIfParams,
   VehicleDigitalTwinData,
   FleetTwinStatus,
+  FleetTwinOverview,
 } from '@nexus-ways/shared';
 
 export const fleetTwinApi = {
+  async getOverview(): Promise<FleetTwinOverview> {
+    try {
+      return await apiFetch<FleetTwinOverview>('/api/fleet-twin/overview', { method: 'GET' });
+    } catch (err) {
+      return {
+        enabled: false,
+        timestamp: new Date().toISOString(),
+        simulated_clock: new Date().toISOString(),
+        totals: {
+          active_vehicles: 0,
+          total_fleet: 0,
+          active_alerts: 0,
+          average_speed_kmh: 0,
+          arrived_today: 0,
+          departed_today: 0,
+        },
+        vehicles: [],
+        alerts: [],
+      };
+    }
+  },
   async getStatus(): Promise<FleetTwinStatus> {
     try {
       return await apiFetch<FleetTwinStatus>('/api/fleet-twin/status', { method: 'GET' });
