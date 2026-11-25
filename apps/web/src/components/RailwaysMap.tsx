@@ -4,7 +4,9 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { LiveRailTelemetryPayload } from '../services/socket';
 import { Badge } from './ui/badge';
-import { TrainFront } from 'lucide-react';
+import { TrainFront, Navigation } from 'lucide-react';
+import { useUserLocationStore } from '../store/userLocationStore';
+import { useMapCameraStore } from '../store/mapCameraStore';
 
 interface RailwaysMapProps {
   stations: Station[];
@@ -62,11 +64,91 @@ export const RailwaysMap: React.FC<RailwaysMapProps> = ({
 
     mapInstanceRef.current = map;
 
+    if (map.on) {
+      map.on('dragstart', () => {
+        useMapCameraStore.getState().setManualInteraction();
+      });
+      map.on('zoomstart', () => {
+        useMapCameraStore.getState().setManualInteraction();
+      });
+    }
+
     return () => {
+      if (map.off) {
+        map.off('dragstart');
+        map.off('zoomstart');
+      }
       map.remove();
       mapInstanceRef.current = null;
     };
   }, []);
+
+  const { coordinates: userCoords, address: userAddress } = useUserLocationStore();
+  const { userFocusTrigger, focusOnUser, isUserLocationVisible } = useMapCameraStore();
+  const userLocationLayerRef = useRef<L.LayerGroup | null>(null);
+  const userMarkerRef = useRef<L.Marker | null>(null);
+  const lastHandledUserFocusRef = useRef(0);
+
+  // Render User Location
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (!userLocationLayerRef.current) {
+      userLocationLayerRef.current = L.layerGroup().addTo(map);
+    }
+    const group = userLocationLayerRef.current;
+    group.clearLayers();
+
+    if (!isUserLocationVisible || !userCoords) {
+      userMarkerRef.current = null;
+      return;
+    }
+
+    const { latitude, longitude, accuracy } = userCoords;
+    const circle = L.circle([latitude, longitude], {
+      radius: Math.max(15, accuracy || 25),
+      color: '#2563eb',
+      fillColor: '#3b82f6',
+      fillOpacity: 0.12,
+      weight: 1.5,
+      dashArray: '3, 4',
+    });
+    group.addLayer(circle);
+
+    const userIcon = L.divIcon({
+      className: 'current-user-location-marker',
+      html: `
+        <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+          <div style="position: absolute; width: 32px; height: 32px; border-radius: 50%; background: rgba(37, 99, 235, 0.28); animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+          <div style="position: relative; width: 22px; height: 22px; border-radius: 50%; background: #2563eb; border: 2.5px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: #ffffff;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+        </div>
+      `,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+    });
+
+    const marker = L.marker([latitude, longitude], { icon: userIcon, zIndexOffset: 1000 });
+    marker.bindPopup(`
+      <div style="font-family: sans-serif; min-width: 200px; padding: 2px;">
+        <strong style="color: #1d4ed8; font-size: 12px;">Your Current Location</strong>
+        <div style="font-size: 13px; font-weight: bold; margin: 3px 0;">${userAddress?.formatted || 'Detected Position'}</div>
+        <div style="font-size: 11px; color: #64748b;">${latitude.toFixed(4)}°, ${longitude.toFixed(4)}° • &plusmn;${Math.round(accuracy)}m</div>
+      </div>
+    `);
+    group.addLayer(marker);
+    userMarkerRef.current = marker;
+  }, [isUserLocationVisible, userCoords, userAddress]);
+
+  // Camera Focus: Center on User ONLY on explicit user request
+  useEffect(() => {
+    if (userFocusTrigger === 0 || userFocusTrigger === lastHandledUserFocusRef.current) return;
+    lastHandledUserFocusRef.current = userFocusTrigger;
+    if (!userCoords || !mapInstanceRef.current) return;
+    mapInstanceRef.current.flyTo([userCoords.latitude, userCoords.longitude], 15, { duration: 1.0 });
+    setTimeout(() => userMarkerRef.current?.openPopup(), 500);
+  }, [userFocusTrigger, userCoords]);
 
   // 2. Render Station Markers
   useEffect(() => {
@@ -315,14 +397,29 @@ export const RailwaysMap: React.FC<RailwaysMapProps> = ({
 
       {/* Map Overlay Badges & Controls - positioned at top-3 left-14 so it does not overlap right sidebars */}
       <div className="absolute top-3 left-14 z-10 flex flex-col gap-2 pointer-events-none">
-        <div className="bg-white/95 border border-slate-200/90 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-xs pointer-events-auto flex items-center gap-2.5 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-            <span className="font-semibold text-slate-900">OpenRailwayMap Real Track Overlay</span>
+        <div className="flex items-center gap-2 pointer-events-auto">
+          <div className="bg-white/95 border border-slate-200/90 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-2.5 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+              <span className="font-semibold text-slate-900">OpenRailwayMap Real Track Overlay</span>
+            </div>
+            <Badge variant="outline" className="text-[10px] bg-slate-50 border-slate-200 text-slate-600">
+              Active
+            </Badge>
           </div>
-          <Badge variant="outline" className="text-[10px] bg-slate-50 border-slate-200 text-slate-600">
-            Active
-          </Badge>
+
+          {userCoords && (
+            <button
+              onClick={() => {
+                focusOnUser();
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-white/95 hover:bg-blue-50/80 backdrop-blur-md border border-blue-200 text-blue-700 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              title={`Center camera on your GPS location: ${userAddress?.formatted || ''}`}
+            >
+              <Navigation className="w-3.5 h-3.5 text-blue-600 fill-blue-600/20" />
+              <span>My Location</span>
+            </button>
+          )}
         </div>
 
         {selectedMovement && (

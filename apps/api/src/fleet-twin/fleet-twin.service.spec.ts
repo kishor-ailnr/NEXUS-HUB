@@ -49,6 +49,23 @@ describe('FleetTwinService', () => {
     expect(twin.risk_score).toBeGreaterThanOrEqual(0);
     expect(twin.risk_score).toBeLessThanOrEqual(100);
     expect(twin.on_time_probability).toBeGreaterThan(0);
+    expect(twin.data_freshness).toBeDefined();
+    expect(twin.eta_breakdown).toBeDefined();
+    expect(twin.explanation).toBeDefined();
+  });
+
+  it('should compute scenario comparison against baseline when what-if params modified', async () => {
+    const vId = MOCK_VEHICLES_DATA[0].id;
+    const scenarioTwin = await service.getVehicleDigitalTwin(vId, {
+      rain_severity_multiplier: 2.0,
+      toll_strike_hours: 2.0,
+      breakdown_hours: 1.0,
+    });
+
+    expect(scenarioTwin.scenario_comparison).toBeDefined();
+    expect(scenarioTwin.scenario_comparison?.eta_delta_minutes).toBeGreaterThan(0);
+    expect(scenarioTwin.scenario_comparison?.baseline_eta).toBeDefined();
+    expect(scenarioTwin.scenario_comparison?.scenario_eta).toBeDefined();
   });
 
   it('should calculate, accept and revert alternate corridor reroute', async () => {

@@ -15,6 +15,7 @@ import {
 import { MockFleet, MockVehicle } from '@nexus-ways/shared';
 import { fleetTwinApi } from '../services/fleetTwinApi';
 import { SimulatedBadge } from '../components/SimulatedBadge';
+import { ThreeEventScene } from '../components/ThreeEventScene';
 import { Button } from '../../../components/ui/button';
 import twinBgWebp from '../assets/fleet-twin-bg.webp';
 import twinBgJpg from '../assets/fleet-twin-bg.jpg';
@@ -25,6 +26,7 @@ export const FleetTwinListPage: React.FC = () => {
   const [vehicles, setVehicles] = useState<MockVehicle[]>([]);
   const [selectedFleetId, setSelectedFleetId] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [show3DScene, setShow3DScene] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadData = async () => {
@@ -98,13 +100,28 @@ export const FleetTwinListPage: React.FC = () => {
           </div>
         </div>
 
-        <Button
-          variant="outline"
-          onClick={() => navigate('/roadways/dashboard')}
-          className="border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 text-xs h-9 cursor-pointer shadow-xs"
-        >
-          Back to Roadways Dashboard
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={show3DScene ? 'default' : 'outline'}
+            onClick={() => setShow3DScene(!show3DScene)}
+            className={`text-xs h-9 cursor-pointer gap-1.5 ${
+              show3DScene
+                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
+                : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 shadow-xs'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>{show3DScene ? 'Hide 3D Simulation' : 'Show 3D Simulation'}</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => navigate('/roadways/dashboard')}
+            className="border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 text-xs h-9 cursor-pointer shadow-xs"
+          >
+            Back to Roadways Dashboard
+          </Button>
+        </div>
       </div>
 
       {/* KPI Overview Cards */}
@@ -145,6 +162,18 @@ export const FleetTwinListPage: React.FC = () => {
           <div className="text-[11px] font-medium text-amber-700 mt-1">Weather, Toll, Ghat & Rest Simulation</div>
         </div>
       </div>
+
+      {/* 3D Isometric Logistics Digital Twin */}
+      {show3DScene && (
+        <div className="space-y-2">
+          <ThreeEventScene
+            allVehicles={filteredVehicles.length > 0 ? filteredVehicles : vehicles}
+            onSelectVehicle={(v) => {
+              if (v?.id) navigate(`/roadways/fleet-twin/${v.id}`);
+            }}
+          />
+        </div>
+      )}
 
       {/* Filter & Search Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white/95 backdrop-blur-md p-3.5 rounded-xl border border-slate-200/90 shadow-sm text-slate-900">

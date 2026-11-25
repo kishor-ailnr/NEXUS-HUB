@@ -13,6 +13,7 @@ import {
   FleetTwinOverview,
   FleetTwinVehicleOverview,
   DEFAULT_WHAT_IF_PARAMS,
+  getOsrmCorridor,
 } from '@nexus-ways/shared';
 import { SupabaseService } from '../supabase/supabase.service';
 import { PredictionService } from './prediction/prediction.service';
@@ -41,6 +42,25 @@ export class FleetTwinService {
   private lastSeededAt: string = new Date().toISOString();
   private isPurged = false;
 
+  // High-performance in-memory cache for digital twins, vehicles, and overview
+  private digitalTwinCache: Map<string, { data: VehicleDigitalTwinData; expiresAt: number }> = new Map();
+  private allVehiclesCache: { data: MockVehicle[]; expiresAt: number } | null = null;
+  private overviewCache: { data: FleetTwinOverview; expiresAt: number } | null = null;
+
+  private invalidateTwinCache(vehicleId?: string) {
+    if (vehicleId) {
+      for (const key of this.digitalTwinCache.keys()) {
+        if (key.startsWith(`${vehicleId}:`)) {
+          this.digitalTwinCache.delete(key);
+        }
+      }
+    } else {
+      this.digitalTwinCache.clear();
+      this.allVehiclesCache = null;
+      this.overviewCache = null;
+    }
+  }
+
   constructor(
     @Optional() private readonly supabaseService: SupabaseService,
     private readonly predictionService: PredictionService,
@@ -59,6 +79,7 @@ export class FleetTwinService {
     this.inMemoryVehicles = MOCK_VEHICLES_DATA.map((v) => ({ ...v, created_at: now }));
     this.isPurged = false;
     this.lastSeededAt = now;
+    this.invalidateTwinCache();
   }
 
   public isEnabled(): boolean {
@@ -91,6 +112,11 @@ export class FleetTwinService {
     const enabled = this.isEnabled();
     const now = new Date();
     const simulatedClock = now.toISOString();
+    const nowMs = Date.now();
+
+    if (this.overviewCache && this.overviewCache.expiresAt > nowMs) {
+      return this.overviewCache.data;
+    }
 
     if (!enabled || this.isPurged) {
       return {
@@ -221,6 +247,7 @@ export class FleetTwinService {
               total_distance_km: route.total_distance_km,
               planned_eta: route.planned_eta,
               waypoints: checkpoints.map((cp) => [cp.latitude, cp.longitude] as [number, number]),
+              osrm_geometry: route.osrm_geometry || getOsrmCorridor(route.corridor) || undefined,
             }
           : undefined,
         fleet_name: fleet?.name,
@@ -237,7 +264,7 @@ export class FleetTwinService {
     highAlerts.sort((a, b) => a.hours_from_now - b.hours_from_now);
     const avgSpeed = movingCount > 0 ? Math.round((movingSpeedSum / movingCount) * 10) / 10 : 0;
 
-    return {
+    const result: FleetTwinOverview = {
       enabled: true,
       timestamp: simulatedClock,
       simulated_clock: simulatedClock,
@@ -252,6 +279,8 @@ export class FleetTwinService {
       vehicles: overviewVehicles,
       alerts: highAlerts,
     };
+    this.overviewCache = { data: result, expiresAt: nowMs + 10_000 };
+    return result;
   }
 
   /**
@@ -283,6 +312,12 @@ export class FleetTwinService {
   async getAllVehicles(): Promise<MockVehicle[]> {
     if (this.isPurged) return [];
 
+    const nowMs = Date.now();
+    if (this.allVehiclesCache && this.allVehiclesCache.expiresAt > nowMs) {
+      return this.allVehiclesCache.data;
+    }
+
+    let vehicles: MockVehicle[] = [];
     if (this.supabaseService?.client) {
       try {
         const { data, error } = await this.supabaseService.client
@@ -290,14 +325,19 @@ export class FleetTwinService {
           .select('*, driver:mock_drivers(*), route:mock_routes(*), fleet:mock_fleets(*)')
           .eq('is_mock', true);
         if (!error && data && data.length > 0) {
-          return data as MockVehicle[];
+          vehicles = data as MockVehicle[];
         }
       } catch (err) {
         this.logger.debug('Database mock_vehicles query failed, falling back to memory');
       }
     }
 
-    return this.inMemoryVehicles.map((v) => this.populateVehicleInMemory(v));
+    if (vehicles.length === 0) {
+      vehicles = this.inMemoryVehicles.map((v) => this.populateVehicleInMemory(v));
+    }
+
+    this.allVehiclesCache = { data: vehicles, expiresAt: nowMs + 15_000 };
+    return vehicles;
   }
 
   /**
@@ -358,10 +398,20 @@ export class FleetTwinService {
     vehicleId: string,
     whatIf: WhatIfParams = DEFAULT_WHAT_IF_PARAMS,
   ): Promise<VehicleDigitalTwinData> {
+    const cacheKey = `${vehicleId}:${whatIf.rain_severity_multiplier || 1}:${whatIf.toll_strike_hours || 0}:${whatIf.breakdown_hours || 0}:${whatIf.traffic_congestion_multiplier || 1}`;
+    const nowMs = Date.now();
+    const cached = this.digitalTwinCache.get(cacheKey);
+    if (cached && cached.expiresAt > nowMs) {
+      return cached.data;
+    }
+
     const vehicle = await this.getVehicleById(vehicleId);
     const driver = vehicle.driver || this.inMemoryDrivers.find((d) => d.id === vehicle.driver_id)!;
     const fleet = vehicle.fleet || this.inMemoryFleets.find((f) => f.id === vehicle.fleet_id)!;
     const route = vehicle.route || this.inMemoryRoutes.find((r) => r.id === vehicle.route_id)!;
+    if (route && !route.osrm_geometry) {
+      route.osrm_geometry = getOsrmCorridor(route.corridor) || undefined;
+    }
     const checkpoints = await this.getCheckpointsByRoute(vehicle.route_id);
 
     // Current checkpoint vs next checkpoint based on progress
@@ -380,10 +430,49 @@ export class FleetTwinService {
       whatIf,
     );
 
-    // Active reroute recommendation
-    const activeReroute = this.inMemoryReroutes.get(vehicleId) || null;
+    // What-If Scenario comparison against clean baseline
+    let scenarioComparison = undefined;
+    const isScenarioActive =
+      (whatIf.rain_severity_multiplier && whatIf.rain_severity_multiplier !== 1.0) ||
+      (whatIf.toll_strike_hours && whatIf.toll_strike_hours !== 0) ||
+      (whatIf.breakdown_hours && whatIf.breakdown_hours !== 0) ||
+      (whatIf.traffic_congestion_multiplier && whatIf.traffic_congestion_multiplier !== 1.0);
 
-    return {
+    if (isScenarioActive) {
+      try {
+        const baselineAnalysis = await this.predictionService.generate48hTimeline(
+          vehicle,
+          route,
+          checkpoints,
+          driver,
+          DEFAULT_WHAT_IF_PARAMS,
+        );
+        const baselineEta = new Date(baselineAnalysis.predictedEta);
+        const scenarioEta = new Date(analysis.predictedEta);
+        const deltaMinutes = Math.round((scenarioEta.getTime() - baselineEta.getTime()) / 60000);
+        scenarioComparison = {
+          baseline_eta: baselineAnalysis.predictedEta,
+          scenario_eta: analysis.predictedEta,
+          eta_delta_minutes: deltaMinutes,
+          risk_delta: analysis.riskScore - baselineAnalysis.riskScore,
+          additional_cost_inr: Math.round(deltaMinutes * 14),
+        };
+      } catch (err) {
+        this.logger.debug(`Failed to calculate baseline scenario comparison: ${err}`);
+      }
+    }
+
+    // Active reroute recommendation (auto-plan initial reroute if none exists or update with current what-if scenario)
+    let activeReroute = this.inMemoryReroutes.get(vehicleId) || null;
+    if (!activeReroute || !activeReroute.accepted) {
+      try {
+        activeReroute = await this.calculateReroute(vehicleId, activeReroute?.mode || 'balanced', whatIf);
+      } catch (err) {
+        this.logger.warn(`Failed to auto-plan active reroute for ${vehicleId}: ${err}`);
+      }
+    }
+
+    const result: VehicleDigitalTwinData = {
       vehicle,
       driver,
       fleet,
@@ -402,8 +491,16 @@ export class FleetTwinService {
       top_delay_causes: analysis.topDelayCauses,
       driver_fatigue_pct: analysis.driverFatiguePct,
       active_reroute: activeReroute,
+      preview_reroute: activeReroute && !activeReroute.accepted ? activeReroute : undefined,
       what_if: whatIf,
+      data_freshness: analysis.dataFreshness,
+      eta_breakdown: analysis.etaBreakdown,
+      explanation: analysis.explanation,
+      scenario_comparison: scenarioComparison,
     };
+
+    this.digitalTwinCache.set(cacheKey, { data: result, expiresAt: nowMs + 30_000 });
+    return result;
   }
 
   /**
@@ -416,6 +513,9 @@ export class FleetTwinService {
   ): Promise<MockReroute> {
     const vehicle = await this.getVehicleById(vehicleId);
     const route = vehicle.route || this.inMemoryRoutes.find((r) => r.id === vehicle.route_id)!;
+    if (route && !route.osrm_geometry) {
+      route.osrm_geometry = getOsrmCorridor(route.corridor) || undefined;
+    }
     const checkpoints = await this.getCheckpointsByRoute(vehicle.route_id);
     const driver = vehicle.driver || this.inMemoryDrivers.find((d) => d.id === vehicle.driver_id)!;
 
@@ -423,6 +523,13 @@ export class FleetTwinService {
     const corridorKey = this.resolveCorridorKey(route.name, route.corridor);
     const startNodeId = this.resolveStartNode(corridorKey, vehicle.progress_pct);
     const endNodeId = this.resolveEndNode(corridorKey);
+
+    // Compute travelled waypoints along current geometry up to current vehicle progress
+    const coords = route.osrm_geometry?.coordinates || [];
+    const totalWp = coords.length;
+    const travelledCount = Math.max(2, Math.round((vehicle.progress_pct / 100) * totalWp));
+    const travelledWaypoints =
+      coords.length > 0 ? coords.slice(0, travelledCount) : undefined;
 
     const rec = await this.rerouteEngine.computeOptimalReroute({
       corridorKey,
@@ -433,6 +540,9 @@ export class FleetTwinService {
       mode,
       driverHoursDrivenToday: driver.hours_driven_today,
       whatIf,
+      progressPct: vehicle.progress_pct,
+      currentLocation: [vehicle.current_lat, vehicle.current_lng],
+      travelledWaypoints,
     });
 
     const mockReroute: MockReroute = {
@@ -457,9 +567,21 @@ export class FleetTwinService {
       is_mock: true,
       seed_batch_id: vehicle.seed_batch_id || SEED_BATCH_ID,
       created_at: new Date().toISOString(),
+      original_metrics: rec.originalMetrics,
+      alternate_metrics: rec.alternateMetrics,
+      problems: rec.problems,
+      feasibility: rec.feasibility,
+      divergence_point: rec.divergencePoint,
+      convergence_point: rec.convergencePoint,
+      destination_point: rec.destinationPoint,
+      travelled_waypoints: rec.travelledWaypoints,
+      original_remaining_waypoints: rec.originalRemainingWaypoints,
+      alternate_waypoints: rec.alternateWaypoints,
+      alternate_candidates: rec.alternateCandidates,
     };
 
     this.inMemoryReroutes.set(vehicle.id, mockReroute);
+    this.invalidateTwinCache(vehicle.id);
     return mockReroute;
   }
 
@@ -475,10 +597,27 @@ export class FleetTwinService {
     existing.accepted = true;
     this.inMemoryReroutes.set(vehicleId, existing);
 
-    // Update vehicle status in memory
+    // Update vehicle status & geometry in memory preserving completed/travelled section
     const vIndex = this.inMemoryVehicles.findIndex((v) => v.id === vehicleId);
     if (vIndex !== -1) {
-      this.inMemoryVehicles[vIndex].status = 'en_route';
+      const v = this.inMemoryVehicles[vIndex];
+      v.status = 'en_route';
+
+      const rIndex = this.inMemoryRoutes.findIndex((r) => r.id === v.route_id);
+      if (rIndex !== -1) {
+        const r = this.inMemoryRoutes[rIndex];
+        const travelled = existing.travelled_waypoints || [];
+        const alternate = existing.alternate_waypoints || existing.route_waypoints || [];
+        // Combine completed travelled + new alternate remaining geometry
+        const combinedCoords = [...travelled, ...alternate];
+        r.osrm_geometry = {
+          routing_source: 'precomputed-osrm',
+          coordinates: combinedCoords,
+          distance_km: existing.alternate_metrics?.remaining_distance_km || r.total_distance_km,
+          duration_minutes: existing.alternate_metrics?.predicted_travel_time_minutes || 360,
+        };
+        r.corridor = existing.alternate_corridor;
+      }
     }
 
     if (this.supabaseService?.client) {
@@ -489,6 +628,7 @@ export class FleetTwinService {
       }
     }
 
+    this.invalidateTwinCache(vehicleId);
     return { success: true, reroute: existing };
   }
 
@@ -496,7 +636,26 @@ export class FleetTwinService {
    * Revert Reroute to Original Corridor.
    */
   async revertReroute(vehicleId: string): Promise<{ success: boolean }> {
+    const existing = this.inMemoryReroutes.get(vehicleId);
     this.inMemoryReroutes.delete(vehicleId);
+    this.invalidateTwinCache(vehicleId);
+
+    // Restore original route geometry
+    const v = this.inMemoryVehicles.find((veh) => veh.id === vehicleId);
+    if (v && existing) {
+      const r = this.inMemoryRoutes.find((route) => route.id === v.route_id);
+      if (r && existing.original_remaining_waypoints) {
+        const travelled = existing.travelled_waypoints || [];
+        const combinedCoords = [...travelled, ...existing.original_remaining_waypoints];
+        r.osrm_geometry = {
+          routing_source: 'precomputed-osrm',
+          coordinates: combinedCoords,
+          distance_km: r.total_distance_km,
+          duration_minutes: 360,
+        };
+        r.corridor = 'NH 48 Primary Expressway';
+      }
+    }
 
     if (this.supabaseService?.client) {
       try {
@@ -570,6 +729,7 @@ export class FleetTwinService {
     this.inMemoryVehicles = [];
     this.inMemoryReroutes.clear();
     this.isPurged = true;
+    this.invalidateTwinCache();
 
     if (this.supabaseService?.client) {
       try {

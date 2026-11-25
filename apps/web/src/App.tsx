@@ -12,10 +12,10 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster } from './components/ui/sonner';
 // FLEET-TWIN (mock) - removable
 const FleetTwinListPage = React.lazy(() =>
-  import('./features/fleet-twin').then((m) => ({ default: m.FleetTwinListPage })),
+  import('./features/fleet-twin/pages/FleetTwinListPage').then((m) => ({ default: m.FleetTwinListPage })),
 );
 const VehicleDigitalTwinPage = React.lazy(() =>
-  import('./features/fleet-twin').then((m) => ({ default: m.VehicleDigitalTwinPage })),
+  import('./features/fleet-twin/pages/VehicleDigitalTwinPage').then((m) => ({ default: m.VehicleDigitalTwinPage })),
 );
 
 export const App: React.FC = () => {

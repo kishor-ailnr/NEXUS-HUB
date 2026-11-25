@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { OrgMode, RegisterRequest, UserProfile, UserRole } from '@nexus-ways/shared';
 import { authService } from '../services/auth';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { useUserLocationStore } from './userLocationStore';
 
 interface AuthState {
   user: UserProfile | null;
@@ -195,6 +196,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: async () => {
     set({ isLoading: true });
     try {
+      useUserLocationStore.getState().clearLocation();
       await authService.signOut();
     } finally {
       set({

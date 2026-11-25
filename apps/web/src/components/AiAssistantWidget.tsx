@@ -118,7 +118,7 @@ export const AiAssistantWidget: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end pointer-events-auto">
       {/* Floating Trigger Button */}
       {!isOpen && (
         <button

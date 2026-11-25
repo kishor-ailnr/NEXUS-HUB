@@ -4,6 +4,7 @@ import {
   MockVehicle,
   MockRoute,
   MockCheckpoint,
+  getOsrmCorridor,
 } from '@nexus-ways/shared';
 
 export const SEED_BATCH_ID = 'fleet_twin_seed_v1';
@@ -807,14 +808,26 @@ const GENERIC_CHECKPOINTS_TEMPLATE = [
 export const MOCK_CHECKPOINTS_DATA: Omit<MockCheckpoint, 'created_at'>[] = [];
 
 MOCK_ROUTES_DATA.forEach((route, rIdx) => {
+  const osrmGeom = getOsrmCorridor(route.corridor);
+  if (osrmGeom) {
+    (route as any).osrm_geometry = osrmGeom;
+  }
+
   const templates = CORRIDOR_CHECKPOINT_TEMPLATES[route.corridor] || GENERIC_CHECKPOINTS_TEMPLATE;
   templates.forEach((tmpl, cIdx) => {
-    // Generate realistic coordinates along vector between origin and destination
     let lat = (tmpl as any).lat;
     let lng = (tmpl as any).lng;
 
-    if (!lat || !lng) {
-      // Linear interpolation between mock node bounds with slight road jitter
+    // Snap to exact OSRM highway coordinates if available
+    if (osrmGeom && osrmGeom.coordinates.length > 0) {
+      const coordIdx = Math.min(
+        osrmGeom.coordinates.length - 1,
+        Math.max(0, Math.floor(tmpl.distPct * (osrmGeom.coordinates.length - 1))),
+      );
+      lng = osrmGeom.coordinates[coordIdx][0];
+      lat = osrmGeom.coordinates[coordIdx][1];
+    } else if (!lat || !lng) {
+      // Linear interpolation between mock node bounds only if no geometry
       const baseLat = 13.0 + rIdx * 0.7;
       const baseLng = 77.0 + (cIdx % 4) * 0.9;
       lat = Number((baseLat + tmpl.distPct * 1.5 + Math.sin(cIdx) * 0.05).toFixed(4));
@@ -1282,3 +1295,17 @@ export const MOCK_VEHICLES_DATA: Omit<MockVehicle, 'created_at'>[] = [
     seed_batch_id: SEED_BATCH_ID,
   },
 ];
+
+// Ensure every vehicle's initial position is accurately snapped directly onto its assigned highway road coordinates
+MOCK_VEHICLES_DATA.forEach((v) => {
+  const route = MOCK_ROUTES_DATA.find((r) => r.id === v.route_id);
+  const osrmGeom = route ? getOsrmCorridor(route.corridor) : null;
+  if (osrmGeom && osrmGeom.coordinates.length > 0) {
+    const coordIdx = Math.min(
+      osrmGeom.coordinates.length - 1,
+      Math.max(0, Math.floor((v.progress_pct / 100) * (osrmGeom.coordinates.length - 1))),
+    );
+    v.current_lng = osrmGeom.coordinates[coordIdx][0];
+    v.current_lat = osrmGeom.coordinates[coordIdx][1];
+  }
+});

@@ -277,8 +277,13 @@ export interface SavedRoute {
   updated_at: string;
 }
 
+export type OsrmRoutingSource = 'osrm' | 'fallback-straight-line' | 'precomputed-osrm' | 'route-unavailable';
+export type OsrmRoutingStatus = 'OSRM_SUCCESS' | 'FALLBACK_ROUTE' | 'ROUTE_UNAVAILABLE';
+
 export interface OsrmRouteGeometry {
-  routing_source: 'osrm' | 'fallback-straight-line';
+  routing_source: OsrmRoutingSource;
+  routing_status?: OsrmRoutingStatus;
+  fallback_reason?: string;
   coordinates: [number, number][]; // [lng, lat]
   distance_km: number;
   duration_minutes: number;

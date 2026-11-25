@@ -155,6 +155,7 @@ async function bootstrap() {
         '/voyages',
         '/voyage-movements',
         '/sea-convoys',
+        '/fleet-twin',
         '/admin',
         '/socket.io',
       ];

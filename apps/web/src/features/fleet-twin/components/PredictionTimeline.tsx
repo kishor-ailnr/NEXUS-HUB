@@ -64,6 +64,20 @@ export const PredictionTimeline: React.FC<PredictionTimelineProps> = ({
     }
   };
 
+  const getProvenanceBadge = (provenance?: string) => {
+    switch (provenance) {
+      case 'OBSERVED':
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'FORECAST':
+        return 'bg-sky-50 text-sky-700 border-sky-200';
+      case 'SCENARIO':
+        return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'MODEL_PREDICTION':
+      default:
+        return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+    }
+  };
+
   return (
     <div className="bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-2xl p-5 shadow-sm text-slate-900">
       {/* Header */}
@@ -75,7 +89,7 @@ export const PredictionTimeline: React.FC<PredictionTimelineProps> = ({
           <div>
             <h3 className="text-base font-bold text-slate-900">48-Hour Predictive Trajectory Timeline</h3>
             <p className="text-xs text-slate-500">
-              Deterministic AI event projection across national freight checkpoints
+              Real-time segmented AI event projection & evidence-based delay forecasting
             </p>
           </div>
         </div>
@@ -103,25 +117,34 @@ export const PredictionTimeline: React.FC<PredictionTimelineProps> = ({
                 <div
                   key={event.id}
                   onClick={() => onSelectEvent(event)}
-                  className={`flex-shrink-0 w-64 p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                  className={`flex-shrink-0 w-72 p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
                     isSelected
                       ? 'bg-blue-50/90 border-2 border-blue-500 shadow-sm scale-[1.02]'
                       : 'bg-slate-50/90 border-slate-200 hover:border-slate-300 hover:bg-slate-100/80 shadow-xs'
                   }`}
                 >
                   <div>
-                    {/* Top row: Hour + Severity */}
+                    {/* Top row: Hour + Provenance + Severity */}
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-mono text-xs font-bold text-blue-700">
                         +{event.hours_from_now}h Ahead
                       </span>
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase border ${getSeverityBadge(
-                          event.severity,
-                        )}`}
-                      >
-                        {event.severity}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${getProvenanceBadge(
+                            event.provenance,
+                          )}`}
+                        >
+                          {event.provenance || 'FORECAST'}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase border ${getSeverityBadge(
+                            event.severity,
+                          )}`}
+                        >
+                          {event.severity}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Event type & location */}
@@ -139,19 +162,43 @@ export const PredictionTimeline: React.FC<PredictionTimelineProps> = ({
                       </div>
                     </div>
 
-                    <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed mb-3">
+                    <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed mb-2">
                       {event.description}
                     </p>
+
+                    {/* Evidence & Action preview if present */}
+                    {event.evidence && (
+                      <div className="text-[10px] text-slate-500 bg-white/70 p-1.5 rounded border border-slate-200/60 mb-2 leading-tight">
+                        <span className="font-semibold text-slate-700">Evidence: </span>
+                        {event.evidence}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Bottom metrics */}
-                  <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs">
-                    <span className="font-mono font-bold text-amber-700">
-                      +{event.delay_minutes} min
-                    </span>
-                    <span className="text-[11px] text-slate-500 font-medium">
-                      {event.confidence_pct}% Confidence
-                    </span>
+                  {/* Bottom metrics & data provenance */}
+                  <div className="pt-2 border-t border-slate-200/80 space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-mono font-bold text-amber-700">
+                        +{event.delay_minutes} min
+                        {event.uncertainty_range_minutes && (
+                          <span className="text-[10px] text-slate-400 font-normal ml-1">
+                            (±{Math.round((event.uncertainty_range_minutes[1] - event.uncertainty_range_minutes[0]) / 2)}m)
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium">
+                        {event.confidence_pct}% Confidence
+                      </span>
+                    </div>
+
+                    {event.data_freshness && (
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                        <span className="truncate max-w-[140px]">{event.data_freshness.provider}</span>
+                        <span className="capitalize text-emerald-600 font-medium">
+                          ● {event.data_freshness.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

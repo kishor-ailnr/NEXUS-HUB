@@ -1,23 +1,220 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import * as THREE from 'three';
 import {
   Play,
   Pause,
   RotateCw,
   Sun,
   Moon,
-  Layers,
+  Truck,
+  Compass,
+  Clock,
+  Shield,
+  Activity,
+  User,
+  X,
+  CloudRain,
+  Fuel,
+  MapPin,
+  AlertTriangle,
+  Gauge,
+  Zap,
+  CheckCircle2,
+  Navigation,
   Eye,
-  Maximize2,
-  FastForward,
-  Sparkles,
+  Coffee,
 } from 'lucide-react';
-import { MockPredictionEvent, PredictionEventType } from '@nexus-ways/shared';
+import {
+  MockPredictionEvent,
+  PredictionEventType,
+  MockVehicle,
+  MockRoute,
+  MockCheckpoint,
+  TruckType,
+  MockReroute,
+} from '@nexus-ways/shared';
+import {
+  build3DVehicle,
+  dispose3DObject,
+  Vehicle3DUserData,
+} from './three-models/threeVehicleBuilders';
+import { buildLogisticsEnvironment } from './three-models/threeEnvironmentBuilder';
 
-interface ThreeEventSceneProps {
+export interface ThreeEventSceneProps {
   currentEvent?: MockPredictionEvent | null;
   events?: MockPredictionEvent[];
   vehicleRegistration?: string;
   onEventSelected?: (event: MockPredictionEvent) => void;
+  // Enhanced fleet telemetry props
+  vehicle?: MockVehicle;
+  route?: MockRoute;
+  checkpoints?: MockCheckpoint[];
+  allVehicles?: MockVehicle[];
+  onSelectVehicle?: (vehicle: MockVehicle) => void;
+  activeReroute?: MockReroute | null;
+  previewReroute?: MockReroute | null;
+}
+
+/**
+ * 13-Step Dhaba Driver Rest Simulation Pose Generator
+ * Calculates exact position, heading angle along tangent (atan2), speed, and step metadata.
+ */
+function getDhabaPose(phase: number): {
+  x: number;
+  z: number;
+  heading: number;
+  speedKmh: number;
+  stepNumber: number;
+  stepTitle: string;
+  remainingMinutes: number;
+} {
+  // Phase ranges from 0 to 1 over the dhaba rest simulation cycle
+  const p = Math.max(0, Math.min(1, phase));
+
+  // Forward tangent sampling delta
+  const dt = 0.003;
+  const sample = (t: number): { x: number; z: number } => {
+    if (t < 0.12) {
+      // Step 1 & 2: Approach along highway and signal right exit
+      const sub = t / 0.12;
+      return {
+        x: -110 + sub * 48, // -110 to -62
+        z: 2.6 - sub * 1.6, // 2.6 to 1.0 (drifting toward exit lane)
+      };
+    } else if (t < 0.22) {
+      // Step 3: Deceleration slip-ramp (curving from highway into dhaba apron)
+      const sub = (t - 0.12) / 0.1;
+      // Hermite/quadratic curve from (-62, 1.0) through (-55, -4.5) to (-48, -10)
+      const x = -62 + sub * 14;
+      const z = 1.0 - sub * 11;
+      return { x, z };
+    } else if (t < 0.3) {
+      // Step 4: Apron entry (smooth transition into parking area)
+      const sub = (t - 0.22) / 0.08;
+      const x = -48 + sub * 8; // -48 to -40
+      const z = -10 - sub * 4; // -10 to -14
+      return { x, z };
+    } else if (t < 0.38) {
+      // Step 5 & 6: Maneuver into marked truck parking stall
+      const sub = (t - 0.3) / 0.08;
+      const x = -40 + sub * 8; // -40 to -32
+      const z = -14;
+      return { x, z };
+    } else if (t < 0.72) {
+      // Step 7, 8 & 9: Parked in stall at (-32, -14)
+      return { x: -32, z: -14 };
+    } else if (t < 0.8) {
+      // Step 10 & 11: Rest complete, pre-trip check, pulling forward out of stall
+      const sub = (t - 0.72) / 0.08;
+      return {
+        x: -32 + sub * 10, // -32 to -22
+        z: -14,
+      };
+    } else if (t < 0.92) {
+      // Step 12: Acceleration merge ramp (curving from apron back to highway)
+      const sub = (t - 0.8) / 0.12;
+      const x = -22 + sub * 20; // -22 to -2
+      const z = -14 + sub * 16.6; // -14 to 2.6
+      return { x, z };
+    } else {
+      // Step 13: Merge into highway mainline and accelerate to cruise
+      const sub = (t - 0.92) / 0.08;
+      return {
+        x: -2 + sub * 32, // -2 to 30
+        z: 2.6,
+      };
+    }
+  };
+
+  const currentPos = sample(p);
+  const nextPos = sample(Math.min(1, p + dt));
+
+  const dx = nextPos.x - currentPos.x;
+  const dz = nextPos.z - currentPos.z;
+
+  // Heading calculation: atan2(dx, dz) where +Z is the forward axis of the model
+  let heading = Math.atan2(dx, dz);
+
+  let speedKmh = 62;
+  let stepNumber = 1;
+  let stepTitle = 'Approaching Oasis Dhaba rest facility';
+  let remainingMinutes = 45;
+
+  if (p < 0.06) {
+    stepNumber = 1;
+    stepTitle = 'Step 1/13: Approaching Highway Dhaba Rest Stop';
+    speedKmh = 62;
+  } else if (p < 0.12) {
+    stepNumber = 2;
+    stepTitle = 'Step 2/13: Signaling Right & Shifting to Deceleration Lane';
+    speedKmh = 52;
+  } else if (p < 0.22) {
+    stepNumber = 3;
+    stepTitle = 'Step 3/13: Decelerating on Entry Slip Ramp';
+    speedKmh = 35;
+  } else if (p < 0.3) {
+    stepNumber = 4;
+    stepTitle = 'Step 4/13: Entering Dhaba Truck Parking Apron';
+    speedKmh = 22;
+  } else if (p < 0.35) {
+    stepNumber = 5;
+    stepTitle = 'Step 5/13: Maneuvering Toward Designated Parking Stall #2';
+    speedKmh = 14;
+  } else if (p < 0.38) {
+    stepNumber = 6;
+    stepTitle = 'Step 6/13: Aligning In Parking Bay & Applying Air Brakes';
+    speedKmh = 6;
+    // Align with stall angle (+15 deg)
+    heading = Math.PI * 0.5 - 0.26;
+  } else if (p < 0.72) {
+    // Actively resting in stall
+    const restProgress = (p - 0.38) / 0.34;
+    remainingMinutes = Math.max(0, Math.round(45 * (1 - restProgress)));
+    speedKmh = 0;
+    heading = Math.PI * 0.5 - 0.26; // Parked in stall
+
+    if (restProgress < 0.15) {
+      stepNumber = 7;
+      stepTitle = 'Step 7/13: Engine Cut • Parking Brakes Set • HOS Timer Started';
+    } else if (restProgress < 0.85) {
+      stepNumber = 8;
+      stepTitle = `Step 8/13: Mandatory Driver Rest in Progress (${remainingMinutes}m remaining)`;
+    } else {
+      stepNumber = 9;
+      stepTitle = `Step 9/13: Rest Period Concluding (${remainingMinutes}m remaining)`;
+    }
+  } else if (p < 0.76) {
+    stepNumber = 10;
+    stepTitle = 'Step 10/13: Rest Complete • Engine Started • Pre-Trip Inspection';
+    speedKmh = 0;
+    heading = Math.PI * 0.5;
+    remainingMinutes = 0;
+  } else if (p < 0.8) {
+    stepNumber = 11;
+    stepTitle = 'Step 11/13: Pulling Out of Stall into Parking Apron';
+    speedKmh = 15;
+    remainingMinutes = 0;
+  } else if (p < 0.92) {
+    stepNumber = 12;
+    stepTitle = 'Step 12/13: Accelerating Along Exit Merge Ramp';
+    speedKmh = 38;
+    remainingMinutes = 0;
+  } else {
+    stepNumber = 13;
+    stepTitle = 'Step 13/13: Merged into Highway Corridor • Resuming 65 km/h';
+    speedKmh = 62;
+    remainingMinutes = 0;
+  }
+
+  return {
+    x: currentPos.x,
+    z: currentPos.z,
+    heading,
+    speedKmh,
+    stepNumber,
+    stepTitle,
+    remainingMinutes,
+  };
 }
 
 export const ThreeEventScene: React.FC<ThreeEventSceneProps> = ({
@@ -25,18 +222,69 @@ export const ThreeEventScene: React.FC<ThreeEventSceneProps> = ({
   events = [],
   vehicleRegistration = 'TN 01 AB 1234',
   onEventSelected,
+  vehicle,
+  route,
+  checkpoints = [],
+  allVehicles = [],
+  onSelectVehicle,
+  activeReroute,
+  previewReroute,
 }) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [is3DMode, setIs3DMode] = useState(true);
-  const [isNight, setIsNight] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playSpeed, setPlaySpeed] = useState<1 | 5 | 10>(1);
-  const [timelineHour, setTimelineHour] = useState(0);
 
-  // Mouse orbit state
-  const isDraggingRef = useRef(false);
-  const lastMousePosRef = useRef({ x: 0, y: 0 });
-  const cameraAngleRef = useRef({ yaw: 0.45, pitch: 0.35, zoom: 1.0 });
+  // Time & Playback UI state
+  const [isNightManual, setIsNightManual] = useState<boolean | null>(null);
+  const [isPlaying, setIsPlaying] = useState<boolean>(true);
+  const [playSpeed, setPlaySpeed] = useState<1 | 5 | 10>(1);
+  const [timelineHour, setTimelineHour] = useState<number>(0);
+
+  // Dynamic Telemetry State for HUD
+  const [selectedVehicleData, setSelectedVehicleData] = useState<MockVehicle | null>(null);
+  const [hoveredVehicleReg, setHoveredVehicleReg] = useState<string | null>(null);
+  const [activeFleetCount, setActiveFleetCount] = useState<number>(1);
+  const [liveHeroSpeed, setLiveHeroSpeed] = useState<number>(62);
+  const [liveHeroHeadingDeg, setLiveHeroHeadingDeg] = useState<number>(90);
+  const [dhabaStepInfo, setDhabaStepInfo] = useState<{
+    stepNumber: number;
+    stepTitle: string;
+    remainingMinutes: number;
+  }>({
+    stepNumber: 1,
+    stepTitle: 'Approaching Oasis Dhaba rest facility',
+    remainingMinutes: 45,
+  });
+
+  // Camera & Three.js refs
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const animFrameIdRef = useRef<number | null>(null);
+
+  const playSpeedRef = useRef(playSpeed);
+  playSpeedRef.current = playSpeed;
+
+  const lightsRef = useRef<{
+    scene: THREE.Scene;
+    ambientLight: THREE.AmbientLight;
+    hemiLight: THREE.HemisphereLight;
+    sunLight: THREE.DirectionalLight;
+    streetPointLights: THREE.PointLight[];
+    dhabaLight?: THREE.PointLight;
+    yardLight?: THREE.PointLight;
+  } | null>(null);
+
+  // Camera orbit controls
+  const orbitStateRef = useRef({
+    isDragging: false,
+    dragButton: 0,
+    startX: 0,
+    startY: 0,
+    yaw: 0.65,
+    pitch: 0.52,
+    distance: 72,
+    target: new THREE.Vector3(10, 2, 6),
+  });
 
   // Effective event type
   const eventType: PredictionEventType = useMemo(() => {
@@ -44,21 +292,106 @@ export const ThreeEventScene: React.FC<ThreeEventSceneProps> = ({
     return 'toll_delay';
   }, [currentEvent]);
 
-  // Handle timeline simulation scrubber loop
+  // Determine natural time of day from 0-48h horizon: starts at 08:00 AM IST
+  const simulatedHourOfDay = useMemo(() => {
+    return (8.0 + timelineHour) % 24;
+  }, [timelineHour]);
+
+  const autoIsNight = useMemo(() => {
+    return simulatedHourOfDay >= 19.0 || simulatedHourOfDay < 5.5;
+  }, [simulatedHourOfDay]);
+
+  const isSunset = useMemo(() => {
+    return simulatedHourOfDay >= 17.0 && simulatedHourOfDay < 19.0;
+  }, [simulatedHourOfDay]);
+
+  const effectiveIsNight = isNightManual !== null ? isNightManual : autoIsNight;
+
+  const effectiveIsNightRef = useRef(effectiveIsNight);
+  effectiveIsNightRef.current = effectiveIsNight;
+
+  const isSunsetRef = useRef(isSunset);
+  isSunsetRef.current = isSunset;
+
+  // Dynamic Lighting Update (decoupled from scene re-construction)
+  useEffect(() => {
+    if (!lightsRef.current) return;
+    const { scene, ambientLight, hemiLight, sunLight, streetPointLights, dhabaLight, yardLight } =
+      lightsRef.current;
+    const daySkyColor = new THREE.Color(0xdce7f3);
+    const sunsetSkyColor = new THREE.Color(0x9a3412);
+    const nightSkyColor = new THREE.Color(0x0a0f1d);
+
+    scene.background = effectiveIsNight ? nightSkyColor : isSunset ? sunsetSkyColor : daySkyColor;
+    if (scene.fog) {
+      (scene.fog as THREE.FogExp2).color.setHex(
+        effectiveIsNight ? 0x0a0f1d : isSunset ? 0x9a3412 : 0xdce7f3,
+      );
+      (scene.fog as THREE.FogExp2).density = effectiveIsNight ? 0.0045 : 0.0035;
+    }
+
+    ambientLight.color.setHex(effectiveIsNight ? 0x1e293b : isSunset ? 0xfdba74 : 0xffffff);
+    ambientLight.intensity = effectiveIsNight ? 0.55 : isSunset ? 0.65 : 0.88;
+
+    hemiLight.color.setHex(effectiveIsNight ? 0x1e3a8a : isSunset ? 0xf97316 : 0xbae6fd);
+    hemiLight.groundColor.setHex(effectiveIsNight ? 0x020617 : isSunset ? 0x312e81 : 0x475569);
+    hemiLight.intensity = effectiveIsNight ? 0.35 : isSunset ? 0.45 : 0.52;
+
+    sunLight.color.setHex(effectiveIsNight ? 0x38bdf8 : isSunset ? 0xf59e0b : 0xfffaed);
+    sunLight.intensity = effectiveIsNight ? 0.45 : isSunset ? 1.25 : 1.4;
+
+    streetPointLights.forEach((light) => {
+      light.intensity = effectiveIsNight ? 2.4 : isSunset ? 1.2 : 0.0;
+    });
+    if (dhabaLight) dhabaLight.intensity = effectiveIsNight ? 2.0 : isSunset ? 1.0 : 0.0;
+    if (yardLight) yardLight.intensity = effectiveIsNight ? 1.8 : isSunset ? 0.9 : 0.0;
+  }, [effectiveIsNight, isSunset]);
+
+  // Differentiate state mode between Live Observed, Predicted Future, and What-If Simulated
+  const twinStateMode = useMemo(() => {
+    if (currentEvent?.provenance === 'SCENARIO') {
+      return {
+        label: 'WHAT-IF SIMULATED STATE',
+        sub: `+${timelineHour.toFixed(1)}h Simulated`,
+        color: 'bg-purple-50 text-purple-900 border-purple-200',
+        dot: 'bg-purple-600',
+      };
+    }
+    if (timelineHour > 0.5 || (currentEvent && currentEvent.hours_from_now > 0)) {
+      return {
+        label: 'PREDICTED FUTURE STATE',
+        sub: `+${timelineHour.toFixed(1)}h Forecast`,
+        color: 'bg-blue-50 text-blue-900 border-blue-200',
+        dot: 'bg-blue-600',
+      };
+    }
+    return {
+      label: 'LIVE OBSERVED STATE',
+      sub: 'Real Telemetry',
+      color: 'bg-emerald-50 text-emerald-900 border-emerald-200',
+      dot: 'bg-emerald-500',
+    };
+  }, [timelineHour, currentEvent]);
+
+  // Keep selected vehicle in sync with prop if updated
+  useEffect(() => {
+    if (vehicle) {
+      setSelectedVehicleData(vehicle);
+    }
+  }, [vehicle]);
+
+  // Simulation Clock & Timeline Scrubber Loop
   useEffect(() => {
     if (!isPlaying) return;
     const interval = setInterval(() => {
       setTimelineHour((prev) => {
-        const next = prev + 0.2 * playSpeed;
+        const next = prev + 0.12 * playSpeed;
         if (next >= 48) {
-          setIsPlaying(false);
           return 0;
         }
-        // Match current active event at this hour
+        // Check if an event matches this hour
         if (events.length > 0 && onEventSelected) {
-          const matched = events.find(
-            (e) => Math.abs(e.hours_from_now - next) < 1.0,
-          );
+          const matched = events.find((e) => Math.abs(e.hours_from_now - next) < 0.9);
           if (matched && matched.id !== currentEvent?.id) {
             onEventSelected(matched);
           }
@@ -69,710 +402,1132 @@ export const ThreeEventScene: React.FC<ThreeEventSceneProps> = ({
     return () => clearInterval(interval);
   }, [isPlaying, playSpeed, events, currentEvent, onEventSelected]);
 
-  // Main 3D / 2D Canvas rendering loop
+  // Main Three.js Scene Setup & Render Loop
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
 
-    let animationFrameId: number;
-    let time = 0;
+    // 1. Scene
+    const scene = new THREE.Scene();
+    sceneRef.current = scene;
 
-    // Particle pool for rain / fog / dust / smoke
-    const particles: { x: number; y: number; z: number; speed: number; size: number }[] = [];
-    for (let i = 0; i < 80; i++) {
-      particles.push({
-        x: (Math.random() - 0.5) * 600,
-        y: Math.random() * 400 - 200,
-        z: (Math.random() - 0.5) * 600,
-        speed: 2 + Math.random() * 4,
-        size: 1 + Math.random() * 2.5,
-      });
-    }
+    const daySkyColor = new THREE.Color(0xdce7f3);
+    const sunsetSkyColor = new THREE.Color(0x9a3412);
+    const nightSkyColor = new THREE.Color(0x0a0f1d);
 
-    const render = () => {
-      time += 0.03;
-      const width = canvas.width;
-      const height = canvas.height;
-      ctx.clearRect(0, 0, width, height);
-
-      // Background Sky / Ambience
-      const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
-      if (isNight) {
-        bgGrad.addColorStop(0, '#020617');
-        bgGrad.addColorStop(0.6, '#0f172a');
-        bgGrad.addColorStop(1, '#1e1b4b');
-      } else {
-        if (eventType === 'weather') {
-          bgGrad.addColorStop(0, '#1e293b');
-          bgGrad.addColorStop(0.7, '#334155');
-          bgGrad.addColorStop(1, '#475569');
-        } else if (eventType === 'ghat_slowdown') {
-          bgGrad.addColorStop(0, '#0c4a6e');
-          bgGrad.addColorStop(0.7, '#075985');
-          bgGrad.addColorStop(1, '#0284c7');
-        } else {
-          bgGrad.addColorStop(0, '#0f172a');
-          bgGrad.addColorStop(0.6, '#1e293b');
-          bgGrad.addColorStop(1, '#334155');
-        }
-      }
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, width, height);
-
-      if (!is3DMode) {
-        render2DFallback(ctx, width, height, eventType, time, isNight);
-      } else {
-        render3DScene(ctx, width, height, eventType, time, isNight, particles);
-      }
-
-      animationFrameId = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [is3DMode, isNight, eventType]);
-
-  // 3D Perspective Projection Engine
-  const project3D = (
-    x: number,
-    y: number,
-    z: number,
-    cx: number,
-    cy: number,
-  ): { x: number; y: number; scale: number; visible: boolean } => {
-    const yaw = cameraAngleRef.current.yaw;
-    const pitch = cameraAngleRef.current.pitch;
-    const zoom = cameraAngleRef.current.zoom;
-
-    // Rotate around Y axis (yaw)
-    const cosY = Math.cos(yaw);
-    const sinY = Math.sin(yaw);
-    const x1 = x * cosY - z * sinY;
-    const z1 = z * cosY + x * sinY;
-
-    // Rotate around X axis (pitch)
-    const cosP = Math.cos(pitch);
-    const sinP = Math.sin(pitch);
-    const y2 = y * cosP - z1 * sinP;
-    const z2 = z1 * cosP + y * sinP;
-
-    // Perspective divide
-    const cameraDist = 450 / zoom;
-    const depth = z2 + cameraDist;
-    if (depth <= 20) return { x: 0, y: 0, scale: 0, visible: false };
-
-    const scale = cameraDist / depth;
-    return {
-      x: cx + x1 * scale,
-      y: cy + y2 * scale,
-      scale,
-      visible: true,
-    };
-  };
-
-  const render3DScene = (
-    ctx: CanvasRenderingContext2D,
-    width: number,
-    height: number,
-    type: PredictionEventType,
-    t: number,
-    night: boolean,
-    particles: any[],
-  ) => {
-    const cx = width / 2;
-    const cy = height / 2 + 30;
-
-    // Grid Floor
-    ctx.strokeStyle = night ? 'rgba(56, 189, 248, 0.08)' : 'rgba(255, 255, 255, 0.1)';
-    ctx.lineWidth = 1;
-    for (let gx = -300; gx <= 300; gx += 60) {
-      const p1 = project3D(gx, 50, -300, cx, cy);
-      const p2 = project3D(gx, 50, 300, cx, cy);
-      if (p1.visible && p2.visible) {
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.stroke();
-      }
-    }
-
-    // Asphalt Road
-    const r1 = project3D(-120, 48, -320, cx, cy);
-    const r2 = project3D(120, 48, -320, cx, cy);
-    const r3 = project3D(120, 48, 320, cx, cy);
-    const r4 = project3D(-120, 48, 320, cx, cy);
-
-    if (r1.visible && r2.visible && r3.visible && r4.visible) {
-      ctx.fillStyle = night ? '#111827' : '#1f2937';
-      ctx.beginPath();
-      ctx.moveTo(r1.x, r1.y);
-      ctx.lineTo(r2.x, r2.y);
-      ctx.lineTo(r3.x, r3.y);
-      ctx.lineTo(r4.x, r4.y);
-      ctx.closePath();
-      ctx.fill();
-
-      // Yellow Road Divider Dashes
-      ctx.strokeStyle = '#facc15';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([12, 10]);
-      const m1 = project3D(0, 47, -310, cx, cy);
-      const m2 = project3D(0, 47, 310, cx, cy);
-      if (m1.visible && m2.visible) {
-        ctx.beginPath();
-        ctx.moveTo(m1.x, m1.y);
-        ctx.lineTo(m2.x, m2.y);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-    }
-
-    // SCENE-SPECIFIC 3D PROCEDURAL OBJECTS
-    switch (type) {
-      case 'toll_delay':
-        renderTollPlaza3D(ctx, cx, cy, t, night);
-        break;
-      case 'weather':
-        renderRainFog3D(ctx, cx, cy, t, night, particles);
-        break;
-      case 'traffic':
-        renderTrafficJam3D(ctx, cx, cy, t, night);
-        break;
-      case 'driver_break':
-        renderDhabaRestStop3D(ctx, cx, cy, t, night);
-        break;
-      case 'ghat_slowdown':
-        renderGhatHairpin3D(ctx, cx, cy, t, night);
-        break;
-      default:
-        renderTollPlaza3D(ctx, cx, cy, t, night);
-        break;
-    }
-
-    // Main 3D Hero Truck
-    renderHeroTruck3D(ctx, cx, cy, t, night, vehicleRegistration);
-  };
-
-  // 1. Toll Plaza 3D
-  const renderTollPlaza3D = (
-    ctx: CanvasRenderingContext2D,
-    cx: number,
-    cy: number,
-    t: number,
-    night: boolean,
-  ) => {
-    // Toll Booth Columns
-    const boothPos = [-70, 70];
-    for (const bx of boothPos) {
-      draw3DBox(ctx, cx, cy, bx, 20, 20, 24, 60, 30, '#0284c7', '#0369a1', '#075985');
-
-      // LED Light Beacon (Green/Red Pulse)
-      const isGreen = Math.sin(t * 1.5) > 0;
-      const lp = project3D(bx, -18, 20, cx, cy);
-      if (lp.visible) {
-        ctx.fillStyle = isGreen ? '#22c55e' : '#ef4444';
-        ctx.shadowColor = isGreen ? '#22c55e' : '#ef4444';
-        ctx.shadowBlur = 15;
-        ctx.beginPath();
-        ctx.arc(lp.x, lp.y, 5 * lp.scale, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-    }
-
-    // Overhead Canopy Roof
-    draw3DBox(ctx, cx, cy, 0, -25, 20, 180, 12, 50, '#38bdf8', '#0284c7', '#0369a1');
-
-    // Barrier Boom Arm (Animated Swing Up and Down)
-    const armAngle = Math.max(0, Math.sin(t * 1.5)) * 0.9; // 0 to ~50 deg
-    const bBase = project3D(58, 28, 22, cx, cy);
-    const bTip = project3D(
-      58 - 90 * Math.cos(armAngle),
-      28 - 90 * Math.sin(armAngle),
-      22,
-      cx,
-      cy,
+    const initialSky = effectiveIsNight
+      ? nightSkyColor
+      : isSunset
+        ? sunsetSkyColor
+        : daySkyColor;
+    scene.background = initialSky;
+    scene.fog = new THREE.FogExp2(
+      effectiveIsNight ? 0x0a0f1d : isSunset ? 0x9a3412 : 0xdce7f3,
+      effectiveIsNight ? 0.0045 : 0.0035,
     );
-    if (bBase.visible && bTip.visible) {
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = 4 * bBase.scale;
-      ctx.beginPath();
-      ctx.moveTo(bBase.x, bBase.y);
-      ctx.lineTo(bTip.x, bTip.y);
-      ctx.stroke();
 
-      // FASTag laser scanner beam
-      if (armAngle > 0.3) {
-        const scannerP = project3D(0, -22, 20, cx, cy);
-        const truckScanP = project3D(0, 15, 60, cx, cy);
-        if (scannerP.visible && truckScanP.visible) {
-          ctx.strokeStyle = 'rgba(34, 197, 94, 0.7)';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(scannerP.x, scannerP.y);
-          ctx.lineTo(truckScanP.x, truckScanP.y);
-          ctx.stroke();
+    // 2. Camera (Isometric Perspective Setup)
+    const aspect = container.clientWidth / container.clientHeight;
+    const camera = new THREE.PerspectiveCamera(38, aspect, 1, 600);
+    cameraRef.current = camera;
+
+    const updateCameraPos = () => {
+      const { yaw, pitch, distance, target } = orbitStateRef.current;
+      const x = target.x + distance * Math.cos(pitch) * Math.sin(yaw);
+      const y = target.y + distance * Math.sin(pitch);
+      const z = target.z + distance * Math.cos(pitch) * Math.cos(yaw);
+      camera.position.set(x, y, z);
+      camera.lookAt(target);
+    };
+    updateCameraPos();
+
+    // 3. Renderer with calibrated tone mapping
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: false,
+      powerPreference: 'high-performance',
+    });
+    rendererRef.current = renderer;
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
+
+    // 4. Calibrated Multi-Source Lighting
+    const ambientLight = new THREE.AmbientLight(
+      effectiveIsNight ? 0x1e293b : isSunset ? 0xfdba74 : 0xffffff,
+      effectiveIsNight ? 0.55 : isSunset ? 0.65 : 0.88,
+    );
+    scene.add(ambientLight);
+
+    const hemiLight = new THREE.HemisphereLight(
+      effectiveIsNight ? 0x1e3a8a : isSunset ? 0xf97316 : 0xbae6fd,
+      effectiveIsNight ? 0x020617 : isSunset ? 0x312e81 : 0x475569,
+      effectiveIsNight ? 0.35 : isSunset ? 0.45 : 0.52,
+    );
+    hemiLight.position.set(0, 50, 0);
+    scene.add(hemiLight);
+
+    const sunLight = new THREE.DirectionalLight(
+      effectiveIsNight ? 0x38bdf8 : isSunset ? 0xf59e0b : 0xfffaed,
+      effectiveIsNight ? 0.45 : isSunset ? 1.25 : 1.4,
+    );
+    sunLight.position.set(45, 60, 35);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 10;
+    sunLight.shadow.camera.far = 180;
+    const d = 65;
+    sunLight.shadow.camera.left = -d;
+    sunLight.shadow.camera.right = d;
+    sunLight.shadow.camera.top = d;
+    sunLight.shadow.camera.bottom = -d;
+    sunLight.shadow.bias = -0.0004;
+    scene.add(sunLight);
+
+    // 5. Environment (Ground, Roads, Markings, Warehouse, Fuel Station, Toll, Dhaba, Streetlamps)
+    const {
+      environmentGroup,
+      streetLamps,
+      streetPointLights,
+      tollBoom,
+      tollLaser,
+      tollLeds,
+      dockDoors,
+      dhabaLight,
+      yardLight,
+    } = buildLogisticsEnvironment();
+    scene.add(environmentGroup);
+
+    // Apply night illumination to streetlamps & facility lights
+    streetPointLights.forEach((pl) => {
+      pl.intensity = effectiveIsNight || isSunset ? 2.2 : 0;
+    });
+    dhabaLight.intensity = effectiveIsNight || isSunset ? 2.5 : 0.4;
+    yardLight.intensity = effectiveIsNight || isSunset ? 2.5 : 0;
+
+    lightsRef.current = {
+      scene,
+      ambientLight,
+      hemiLight,
+      sunLight,
+      streetPointLights,
+      dhabaLight,
+      yardLight,
+    };
+
+    // 6. Rain Particle System (for weather events)
+    let rainParticles: THREE.Points | null = null;
+    const rainCount = 700;
+    const rainGeo = new THREE.BufferGeometry();
+    const rainPositions = new Float32Array(rainCount * 3);
+    for (let i = 0; i < rainCount * 3; i += 3) {
+      rainPositions[i] = (Math.random() - 0.5) * 180;
+      rainPositions[i + 1] = Math.random() * 55;
+      rainPositions[i + 2] = (Math.random() - 0.5) * 180;
+    }
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+    const rainMat = new THREE.PointsMaterial({
+      color: 0x93c5fd,
+      size: 0.38,
+      transparent: true,
+      opacity: 0.65,
+    });
+    rainParticles = new THREE.Points(rainGeo, rainMat);
+    if (eventType === 'weather') {
+      scene.add(rainParticles);
+    }
+
+    // 7. Active Fleet Vehicles Collection
+    const vehicleMeshes: THREE.Group[] = [];
+    const activeVehiclesList: MockVehicle[] = [];
+
+    // Hero vehicle setup
+    const heroVehicleData: MockVehicle =
+      vehicle ||
+      ({
+        id: 'hero-1',
+        fleet_id: 'fleet-1',
+        registration_number: vehicleRegistration,
+        truck_type: '32ft_mxl',
+        capacity_tons: 25,
+        fuel_type: 'Diesel',
+        current_load_tons: 18.5,
+        status: 'en_route',
+        current_lat: 19.076,
+        current_lng: 72.8777,
+        progress_pct: 35,
+        speed_kmh: 62,
+        driver_id: 'd-1',
+        route_id: 'r-1',
+        is_mock: true,
+        seed_batch_id: 'batch-1',
+        created_at: new Date().toISOString(),
+        driver: {
+          id: 'd-1',
+          name: 'Rajesh Kumar',
+          phone: '+91 98765 43210',
+          license_number: 'DL-IND-092834',
+          license_type: 'HMV',
+          experience_years: 8,
+          rating: 4.8,
+          shift_start: new Date().toISOString(),
+          hours_driven_today: 3.5,
+          max_daily_hours: 10,
+          rest_hours_compliance: 'compliant',
+          is_mock: true,
+          seed_batch_id: 'batch-1',
+          created_at: new Date().toISOString(),
+        },
+        route: {
+          id: 'r-1',
+          name: 'Golden Corridor NH-48',
+          corridor: 'Mumbai-Bengaluru Corridor',
+          origin_city: 'Mumbai',
+          destination_city: 'Bengaluru',
+          total_distance_km: 984,
+          base_duration_hours: 18,
+          planned_departure: new Date().toISOString(),
+          planned_eta: new Date().toISOString(),
+          highway_numbers: ['NH-48'],
+          is_mock: true,
+          seed_batch_id: 'batch-1',
+          created_at: new Date().toISOString(),
+        },
+      } as MockVehicle);
+    activeVehiclesList.push(heroVehicleData);
+
+    // Populate peer fleets
+    if (allVehicles.length > 0) {
+      allVehicles.forEach((v) => {
+        if (v.registration_number !== heroVehicleData.registration_number) {
+          activeVehiclesList.push(v);
         }
-      }
+      });
+    } else {
+      // Create rich peer fleet trucks operating simultaneously
+      activeVehiclesList.push(
+        {
+          id: 'fleet-2',
+          fleet_id: 'fleet-2',
+          registration_number: 'KA 04 MX 8821',
+          truck_type: 'container_carrier' as TruckType,
+          capacity_tons: 30,
+          fuel_type: 'Diesel',
+          current_load_tons: 22,
+          status: 'en_route',
+          speed_kmh: 58,
+          current_lat: 18.5204,
+          current_lng: 73.8567,
+          progress_pct: 68,
+          driver_id: 'd-2',
+          route_id: 'r-2',
+          is_mock: true,
+          seed_batch_id: 'batch-1',
+          created_at: new Date().toISOString(),
+          driver: {
+            id: 'd-2',
+            name: 'Gurmeet Singh',
+            phone: '+91 98111 22334',
+            license_number: 'DL-PUN-77123',
+            license_type: 'HMV',
+            experience_years: 12,
+            rating: 4.9,
+            shift_start: new Date().toISOString(),
+            hours_driven_today: 5.2,
+            max_daily_hours: 10,
+            rest_hours_compliance: 'compliant',
+            is_mock: true,
+            seed_batch_id: 'batch-1',
+            created_at: new Date().toISOString(),
+          },
+          route: {
+            id: 'r-2',
+            name: 'Pune-Chennai Express',
+            corridor: 'Pune-Bengaluru NH-48',
+            origin_city: 'Pune',
+            destination_city: 'Chennai',
+            total_distance_km: 840,
+            base_duration_hours: 16,
+            planned_departure: new Date().toISOString(),
+            planned_eta: new Date().toISOString(),
+            highway_numbers: ['NH-48'],
+            is_mock: true,
+            seed_batch_id: 'batch-1',
+            created_at: new Date().toISOString(),
+          },
+        } as MockVehicle,
+        {
+          id: 'fleet-3',
+          fleet_id: 'fleet-3',
+          registration_number: 'MH 12 QZ 4490',
+          truck_type: 'tanker' as TruckType,
+          capacity_tons: 28,
+          fuel_type: 'LNG',
+          current_load_tons: 26,
+          status: 'en_route',
+          speed_kmh: 52,
+          current_lat: 15.3173,
+          current_lng: 75.7139,
+          progress_pct: 22,
+          driver_id: 'd-3',
+          route_id: 'r-3',
+          is_mock: true,
+          seed_batch_id: 'batch-1',
+          created_at: new Date().toISOString(),
+          driver: {
+            id: 'd-3',
+            name: 'Sunil Patil',
+            phone: '+91 98222 33445',
+            license_number: 'DL-MAH-88231',
+            license_type: 'HMV_HGMV',
+            experience_years: 9,
+            rating: 4.7,
+            shift_start: new Date().toISOString(),
+            hours_driven_today: 2.1,
+            max_daily_hours: 10,
+            rest_hours_compliance: 'compliant',
+            is_mock: true,
+            seed_batch_id: 'batch-1',
+            created_at: new Date().toISOString(),
+          },
+          route: {
+            id: 'r-3',
+            name: 'Western Energy Haul',
+            corridor: 'Surat-Mumbai Petroleum Route',
+            origin_city: 'Surat',
+            destination_city: 'Mumbai',
+            total_distance_km: 290,
+            base_duration_hours: 6,
+            planned_departure: new Date().toISOString(),
+            planned_eta: new Date().toISOString(),
+            highway_numbers: ['NH-48'],
+            is_mock: true,
+            seed_batch_id: 'batch-1',
+            created_at: new Date().toISOString(),
+          },
+        } as MockVehicle,
+        {
+          id: 'fleet-4',
+          fleet_id: 'fleet-4',
+          registration_number: 'DL 01 TC 9012',
+          truck_type: 'refrigerated' as TruckType,
+          capacity_tons: 20,
+          fuel_type: 'Diesel',
+          current_load_tons: 14,
+          status: 'en_route',
+          speed_kmh: 65,
+          current_lat: 13.0827,
+          current_lng: 80.2707,
+          progress_pct: 88,
+          driver_id: 'd-4',
+          route_id: 'r-4',
+          is_mock: true,
+          seed_batch_id: 'batch-1',
+          created_at: new Date().toISOString(),
+          driver: {
+            id: 'd-4',
+            name: 'Vikram Joshi',
+            phone: '+91 98333 44556',
+            license_number: 'DL-DEL-55612',
+            license_type: 'HMV',
+            experience_years: 6,
+            rating: 4.85,
+            shift_start: new Date().toISOString(),
+            hours_driven_today: 4.8,
+            max_daily_hours: 10,
+            rest_hours_compliance: 'compliant',
+            is_mock: true,
+            seed_batch_id: 'batch-1',
+            created_at: new Date().toISOString(),
+          },
+          route: {
+            id: 'r-4',
+            name: 'Cold-Chain Pharma Fast-Track',
+            corridor: 'Hyderabad-Bengaluru Expressway',
+            origin_city: 'Hyderabad',
+            destination_city: 'Bengaluru',
+            total_distance_km: 570,
+            base_duration_hours: 10,
+            planned_departure: new Date().toISOString(),
+            planned_eta: new Date().toISOString(),
+            highway_numbers: ['NH-44'],
+            is_mock: true,
+            seed_batch_id: 'batch-1',
+            created_at: new Date().toISOString(),
+          },
+        } as MockVehicle,
+        {
+          id: 'fleet-5',
+          fleet_id: 'fleet-5',
+          registration_number: 'HR 26 EX 3110',
+          truck_type: '20ft_container' as TruckType,
+          capacity_tons: 10,
+          fuel_type: 'Electric',
+          current_load_tons: 6.2,
+          status: 'idle',
+          speed_kmh: 0,
+          current_lat: 12.9716,
+          current_lng: 77.5946,
+          progress_pct: 99,
+          driver_id: 'd-5',
+          route_id: 'r-5',
+          is_mock: true,
+          seed_batch_id: 'batch-1',
+          created_at: new Date().toISOString(),
+          driver: {
+            id: 'd-5',
+            name: 'Amit Verma',
+            phone: '+91 98444 55667',
+            license_number: 'DL-HAR-11234',
+            license_type: 'HMV',
+            experience_years: 4,
+            rating: 4.6,
+            shift_start: new Date().toISOString(),
+            hours_driven_today: 1.5,
+            max_daily_hours: 10,
+            rest_hours_compliance: 'compliant',
+            is_mock: true,
+            seed_batch_id: 'batch-1',
+            created_at: new Date().toISOString(),
+          },
+          route: {
+            id: 'r-5',
+            name: 'Urban Last-Mile Dispatch',
+            corridor: 'Bengaluru Intra-Hub Delivery',
+            origin_city: 'Peenya Hub',
+            destination_city: 'Whitefield Depot',
+            total_distance_km: 45,
+            base_duration_hours: 2,
+            planned_departure: new Date().toISOString(),
+            planned_eta: new Date().toISOString(),
+            highway_numbers: ['Outer Ring Road'],
+            is_mock: true,
+            seed_batch_id: 'batch-1',
+            created_at: new Date().toISOString(),
+          },
+        } as MockVehicle,
+      );
     }
-  };
 
-  // 2. Weather Rain & Fog 3D
-  const renderRainFog3D = (
-    ctx: CanvasRenderingContext2D,
-    cx: number,
-    cy: number,
-    t: number,
-    night: boolean,
-    particles: any[],
-  ) => {
-    ctx.strokeStyle = 'rgba(186, 230, 253, 0.55)';
-    ctx.lineWidth = 1.2;
+    setActiveFleetCount(activeVehiclesList.length);
 
-    for (const p of particles) {
-      p.y += p.speed * 4;
-      p.x -= 1.5; // Wind drift
-      if (p.y > 60) {
-        p.y = -220;
-        p.x = (Math.random() - 0.5) * 600;
-        p.z = (Math.random() - 0.5) * 600;
-      }
-      const p1 = project3D(p.x, p.y, p.z, cx, cy);
-      const p2 = project3D(p.x - 4, p.y + 18, p.z, cx, cy);
-
-      if (p1.visible && p2.visible) {
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.stroke();
-      }
-    }
-
-    // Dense Hill Fog Volume (Concentric mist discs)
-    const fogGrad = ctx.createRadialGradient(cx, cy, 30, cx, cy, 240);
-    fogGrad.addColorStop(0, 'rgba(148, 163, 184, 0.05)');
-    fogGrad.addColorStop(0.5, 'rgba(203, 213, 225, 0.25)');
-    fogGrad.addColorStop(1, 'rgba(15, 23, 42, 0)');
-    ctx.fillStyle = fogGrad;
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  };
-
-  // 3. Traffic Jam 3D
-  const renderTrafficJam3D = (
-    ctx: CanvasRenderingContext2D,
-    cx: number,
-    cy: number,
-    t: number,
-    night: boolean,
-  ) => {
-    // Queued commercial vehicles ahead
-    const truckOffsets = [
-      { z: -100, x: -45, color: '#f59e0b' },
-      { z: -170, x: 45, color: '#3b82f6' },
-      { z: -230, x: -40, color: '#10b981' },
-      { z: -290, x: 38, color: '#8b5cf6' },
-    ];
-
-    for (const tr of truckOffsets) {
-      const crawl = Math.sin(t + tr.z) * 5;
-      draw3DBox(ctx, cx, cy, tr.x, 22, tr.z + crawl, 38, 40, 70, tr.color, '#334155', '#1e293b');
-
-      // Glowing Brake Lights
-      const isBraking = Math.sin(t * 2 + tr.z) > -0.2;
-      const b1 = project3D(tr.x - 14, 32, tr.z + crawl + 36, cx, cy);
-      const b2 = project3D(tr.x + 14, 32, tr.z + crawl + 36, cx, cy);
-      if (b1.visible && b2.visible && isBraking) {
-        ctx.fillStyle = '#ef4444';
-        ctx.shadowColor = '#ef4444';
-        ctx.shadowBlur = 10;
-        ctx.beginPath();
-        ctx.arc(b1.x, b1.y, 4 * b1.scale, 0, Math.PI * 2);
-        ctx.arc(b2.x, b2.y, 4 * b2.scale, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-    }
-  };
-
-  // 4. Dhaba Rest Stop 3D
-  const renderDhabaRestStop3D = (
-    ctx: CanvasRenderingContext2D,
-    cx: number,
-    cy: number,
-    t: number,
-    night: boolean,
-  ) => {
-    // Roadside Dhaba Building
-    draw3DBox(ctx, cx, cy, 180, 10, -50, 90, 45, 110, '#b45309', '#78350f', '#451a03');
-
-    // Thatch Canopy Roof
-    draw3DBox(ctx, cx, cy, 180, -22, -50, 110, 15, 130, '#d97706', '#92400e', '#78350f');
-
-    // String Lights / Lanterns (Glowing in night mode)
-    const lanternColors = ['#f59e0b', '#ef4444', '#10b981', '#38bdf8', '#fbbf24'];
-    for (let i = 0; i < 5; i++) {
-      const lx = 135 + i * 22;
-      const lp = project3D(lx, -12, 16, cx, cy);
-      if (lp.visible) {
-        ctx.fillStyle = lanternColors[i];
-        ctx.shadowColor = lanternColors[i];
-        ctx.shadowBlur = night ? 14 : 4;
-        ctx.beginPath();
-        ctx.arc(lp.x, lp.y, 4 * lp.scale, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-    }
-
-    // Tea stall smoke / chai steam particles
-    const sp = project3D(145, -30 - (t * 15) % 40, -10, cx, cy);
-    if (sp.visible) {
-      ctx.fillStyle = 'rgba(241, 245, 249, 0.4)';
-      ctx.beginPath();
-      ctx.arc(sp.x, sp.y, 6 * sp.scale, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  };
-
-  // 5. Ghat Hairpin 3D
-  const renderGhatHairpin3D = (
-    ctx: CanvasRenderingContext2D,
-    cx: number,
-    cy: number,
-    t: number,
-    night: boolean,
-  ) => {
-    // Mountain Rock Cliff Side
-    draw3DBox(ctx, cx, cy, -190, -40, -50, 100, 180, 240, '#475569', '#334155', '#1e293b');
-
-    // Guard Rail Barrier Blocks along hairpins
-    for (let gz = -180; gz <= 180; gz += 45) {
-      const gb1 = project3D(125, 40, gz, cx, cy);
-      const gb2 = project3D(125, 30, gz + 20, cx, cy);
-      if (gb1.visible && gb2.visible) {
-        ctx.fillStyle = '#f8fafc';
-        ctx.fillRect(gb1.x, gb1.y, 8 * gb1.scale, 12 * gb1.scale);
-      }
-    }
-  };
-
-  // Main 3D Hero Commercial Truck
-  const renderHeroTruck3D = (
-    ctx: CanvasRenderingContext2D,
-    cx: number,
-    cy: number,
-    t: number,
-    night: boolean,
-    reg: string,
-  ) => {
-    const truckZ = 40;
-    const truckX = 0;
-    const vibrate = Math.sin(t * 12) * 0.8;
-
-    // Chassis & Wheels
-    const w1 = project3D(truckX - 22, 45, truckZ - 30, cx, cy);
-    const w2 = project3D(truckX + 22, 45, truckZ - 30, cx, cy);
-    const w3 = project3D(truckX - 22, 45, truckZ + 35, cx, cy);
-    const w4 = project3D(truckX + 22, 45, truckZ + 35, cx, cy);
-    ctx.fillStyle = '#0f172a';
-    [w1, w2, w3, w4].forEach((w) => {
-      if (w.visible) {
-        ctx.beginPath();
-        ctx.arc(w.x, w.y, 7 * w.scale, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    // Build 3D models for all active fleets
+    activeVehiclesList.forEach((vData) => {
+      const vMesh = build3DVehicle(vData);
+      scene.add(vMesh);
+      vehicleMeshes.push(vMesh);
     });
 
-    // Main Freight Container Cargo Box
-    draw3DBox(
-      ctx,
-      cx,
-      cy,
-      truckX,
-      12 + vibrate,
-      truckZ + 10,
-      44,
-      48,
-      90,
-      '#0284c7',
-      '#0369a1',
-      '#075985',
-    );
+    // 8. Animation & Movement Loop
+    const clock = new THREE.Clock();
+    let simTime = 0;
+    let lastHudUpdateTime = 0;
+    let currentHeroSpeed = 62;
+    let currentHeroHeading = 90;
+    let currentDhabaInfo: {
+      stepNumber: number;
+      stepTitle: string;
+      remainingMinutes: number;
+    } | null = null;
 
-    // Front Cabin
-    draw3DBox(
-      ctx,
-      cx,
-      cy,
-      truckX,
-      20 + vibrate,
-      truckZ - 50,
-      42,
-      40,
-      32,
-      '#38bdf8',
-      '#0284c7',
-      '#0369a1',
-    );
+    const animate = () => {
+      animFrameIdRef.current = requestAnimationFrame(animate);
 
-    // Windshield Glass
-    const ws = project3D(truckX, 10 + vibrate, truckZ - 64, cx, cy);
-    if (ws.visible) {
-      ctx.fillStyle = 'rgba(224, 242, 254, 0.85)';
-      ctx.fillRect(ws.x - 14 * ws.scale, ws.y - 8 * ws.scale, 28 * ws.scale, 16 * ws.scale);
-    }
+      const delta = clock.getDelta();
+      simTime += delta * playSpeedRef.current;
 
-    // Headlights (High-beam cones in night or fog)
-    const hlLeft = project3D(truckX - 16, 32 + vibrate, truckZ - 68, cx, cy);
-    const hlRight = project3D(truckX + 16, 32 + vibrate, truckZ - 68, cx, cy);
-    if (hlLeft.visible && hlRight.visible) {
-      ctx.fillStyle = '#fef08a';
-      ctx.shadowColor = '#fef08a';
-      ctx.shadowBlur = 12;
-      ctx.beginPath();
-      ctx.arc(hlLeft.x, hlLeft.y, 4 * hlLeft.scale, 0, Math.PI * 2);
-      ctx.arc(hlRight.x, hlRight.y, 4 * hlRight.scale, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
+      // Update rain particle system
+      if (rainParticles && eventType === 'weather') {
+        const posAttr = rainParticles.geometry.attributes.position as THREE.BufferAttribute;
+        for (let i = 1; i < rainPositions.length; i += 3) {
+          rainPositions[i] -= delta * 38;
+          if (rainPositions[i] < 0) {
+            rainPositions[i] = 52;
+          }
+        }
+        posAttr.needsUpdate = true;
+      }
 
-      // Projection Cones on Road
-      if (night || eventType === 'weather') {
-        const coneTargetL = project3D(truckX - 45, 48, truckZ - 220, cx, cy);
-        const coneTargetR = project3D(truckX + 45, 48, truckZ - 220, cx, cy);
-        if (coneTargetL.visible && coneTargetR.visible) {
-          const coneGrad = ctx.createLinearGradient(
-            hlLeft.x,
-            hlLeft.y,
-            coneTargetL.x,
-            coneTargetL.y,
-          );
-          coneGrad.addColorStop(0, 'rgba(254, 240, 138, 0.45)');
-          coneGrad.addColorStop(1, 'rgba(254, 240, 138, 0)');
-          ctx.fillStyle = coneGrad;
-          ctx.beginPath();
-          ctx.moveTo(hlLeft.x, hlLeft.y);
-          ctx.lineTo(coneTargetL.x, coneTargetL.y);
-          ctx.lineTo(coneTargetR.x, coneTargetR.y);
-          ctx.lineTo(hlRight.x, hlRight.y);
-          ctx.closePath();
-          ctx.fill();
+      // Update toll plaza FASTag cycle
+      const tollCycle = Math.sin(simTime * 1.6);
+      const isGateOpen = tollCycle > 0.15;
+      tollBoom.rotation.z = isGateOpen ? Math.PI * 0.28 : 0;
+      tollLaser.visible = eventType === 'toll_delay' && !isGateOpen;
+      if (tollLeds.length > 0) {
+        tollLeds.forEach((led) => {
+          const mat = led.material as THREE.MeshBasicMaterial;
+          mat.color.setHex(isGateOpen ? 0x22c55e : 0xef4444);
+        });
+      }
+
+      // ----------------------------------------------------
+      // Vehicle Movement & Strict Road Tangent Heading Math
+      // ----------------------------------------------------
+      const isNight = effectiveIsNightRef.current;
+      const isSunsetNow = isSunsetRef.current;
+
+      vehicleMeshes.forEach((mesh, idx) => {
+        const userData = mesh.userData as Vehicle3DUserData;
+        const vData = userData.vehicleData;
+        const speedKmh = vData?.speed_kmh || 58;
+
+        const isHero = idx === 0;
+
+        if (isHero) {
+          if (eventType === 'driver_break') {
+            // Full 13-step Dhaba rest simulation
+            const cycleDuration = 32.0; // seconds for full 13-step progression
+            const dhabaPhase = (simTime % cycleDuration) / cycleDuration;
+            const pose = getDhabaPose(dhabaPhase);
+
+            mesh.position.set(pose.x, 0, pose.z);
+            mesh.rotation.y = pose.heading;
+
+            currentHeroSpeed = pose.speedKmh;
+            currentHeroHeading = Math.round(((pose.heading * 180) / Math.PI + 360) % 360);
+            currentDhabaInfo = {
+              stepNumber: pose.stepNumber,
+              stepTitle: pose.stepTitle,
+              remainingMinutes: pose.remainingMinutes,
+            };
+
+            // Wheel roll
+            if (pose.speedKmh > 0) {
+              userData.wheels.forEach((w) => {
+                w.rotation.x += delta * pose.speedKmh * 0.1 * playSpeedRef.current;
+              });
+            }
+          } else if (eventType === 'toll_delay') {
+            // Toll booth approach, scan halt at x = 79, and departure
+            const span = 250;
+            const basePos = ((simTime * 9.5) % span) - 110;
+            const isNearToll = basePos >= 72 && basePos <= 83;
+            const heroX = isNearToll && !isGateOpen ? 79 : basePos;
+            mesh.position.set(heroX, 0, 2.6);
+
+            // Crucial: Eastbound road tangent is (dx=1, dz=0) -> atan2(1, 0) = PI/2 (90 deg)
+            mesh.rotation.y = Math.PI * 0.5;
+
+            currentHeroSpeed = heroX === 79 ? 0 : 58;
+            currentHeroHeading = 90;
+
+            if (currentHeroSpeed > 0) {
+              userData.wheels.forEach((w) => {
+                w.rotation.x += delta * currentHeroSpeed * 0.1 * playSpeedRef.current;
+              });
+            }
+          } else if (eventType === 'ghat_slowdown') {
+            // Mountain Ghat winding section with authentic S-curve steering
+            const cycleX = ((simTime * 32 * 0.1) % 260) - 130;
+            const curveZ = 2.6 + Math.sin(cycleX * 0.08) * 1.4;
+
+            // Instantaneous road tangent
+            const dx = 1.0;
+            const dz = Math.cos(cycleX * 0.08) * 1.4 * 0.08;
+            const targetHeading = Math.atan2(dx, dz);
+
+            mesh.position.set(cycleX, 0, curveZ);
+            mesh.rotation.y = targetHeading;
+
+            currentHeroSpeed = 32;
+            currentHeroHeading = Math.round(((targetHeading * 180) / Math.PI + 360) % 360);
+
+            userData.wheels.forEach((w) => {
+              w.rotation.x += delta * 32 * 0.1 * playSpeedRef.current;
+            });
+          } else if (eventType === 'weather') {
+            // Weather slowdown
+            const cycleX = ((simTime * 42 * 0.1) % 260) - 130;
+            mesh.position.set(cycleX, 0, 2.6);
+            mesh.rotation.y = Math.PI * 0.5; // Eastbound
+            currentHeroSpeed = 42;
+            currentHeroHeading = 90;
+
+            userData.wheels.forEach((w) => {
+              w.rotation.x += delta * 42 * 0.1 * playSpeedRef.current;
+            });
+          } else {
+            // Normal highway cruise Eastbound
+            const cycleX = ((simTime * speedKmh * 0.1) % 260) - 130;
+            mesh.position.set(cycleX, 0, 2.6);
+            mesh.rotation.y = Math.PI * 0.5; // Facing East strictly along road
+            currentHeroSpeed = speedKmh;
+            currentHeroHeading = 90;
+
+            userData.wheels.forEach((w) => {
+              w.rotation.x += delta * speedKmh * 0.1 * playSpeedRef.current;
+            });
+          }
+        } else if (idx === 1) {
+          // Peer 1: Container carrier traveling Westbound on opposite lane (z = -2.6)
+          // Westbound road tangent is (dx=-1, dz=0) -> atan2(-1, 0) = -PI/2 (-90 deg)
+          const cycleX = 130 - ((simTime * 56 * 0.09 + 35) % 260);
+          mesh.position.set(cycleX, 0, -2.6);
+          mesh.rotation.y = -Math.PI * 0.5; // Strictly facing West (opposite direction)
+
+          userData.wheels.forEach((w) => {
+            w.rotation.x += delta * 56 * 0.09 * playSpeedRef.current;
+          });
+        } else if (idx === 2) {
+          // Peer 2: Tanker traveling Eastbound in slow lane (z = 4.2)
+          const cycleX = ((simTime * 48 * 0.08 + 110) % 260) - 130;
+          mesh.position.set(cycleX, 0, 4.2);
+          mesh.rotation.y = Math.PI * 0.5; // Strictly facing East
+
+          userData.wheels.forEach((w) => {
+            w.rotation.x += delta * 48 * 0.08 * playSpeedRef.current;
+          });
+        } else if (idx === 3) {
+          // Peer 3: Refrigerated Truck traveling Westbound on passing lane (z = -4.2)
+          const cycleX = 125 - ((simTime * 64 * 0.1 + 170) % 260);
+          mesh.position.set(cycleX, 0, -4.2);
+          mesh.rotation.y = -Math.PI * 0.5; // Strictly facing West
+
+          userData.wheels.forEach((w) => {
+            w.rotation.x += delta * 64 * 0.1 * playSpeedRef.current;
+          });
+        } else if (idx === 4) {
+          // Peer 4: Delivery truck backed into warehouse loading bay #2 (x = 35 - 2.9, z = 52 + 10)
+          mesh.position.set(35 - 2.9, 0, 52 + 9.5);
+          mesh.rotation.y = 0; // Backed up against the dock door
+        }
+
+        // Night / Sunset Headlights & Taillights Intensity
+        if (userData.headlightSpot) {
+          userData.headlightSpot.intensity =
+            isNight || isSunsetNow || eventType === 'weather' ? 3.4 : 0.6;
+        }
+        if (userData.headlightCones) {
+          userData.headlightCones.forEach((c) => {
+            c.visible = isNight || isSunsetNow || eventType === 'weather';
+            if (c.material) {
+              (c.material as THREE.MeshBasicMaterial).opacity = isNight
+                ? 0.16
+                : isSunsetNow
+                  ? 0.1
+                  : 0.14;
+            }
+          });
+        }
+        if (userData.rearPointLight) {
+          userData.rearPointLight.intensity = isNight || isSunsetNow ? 1.0 : 0.2;
+        }
+      });
+
+      // Throttle React HUD state updates to 4Hz (every 250ms) to prevent 60fps main thread thrashing
+      const now = performance.now();
+      if (now - lastHudUpdateTime > 250) {
+        lastHudUpdateTime = now;
+        setLiveHeroSpeed(currentHeroSpeed);
+        setLiveHeroHeadingDeg(currentHeroHeading);
+        if (currentDhabaInfo) {
+          setDhabaStepInfo(currentDhabaInfo);
         }
       }
+
+      // Render scene
+      renderer.render(scene, camera);
+    };
+
+    animate();
+
+    // 9. Resize Observer
+    const handleResize = () => {
+      if (!container || !renderer || !camera) return;
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    };
+
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(container);
+
+    // 10. Pointer Interactions (Orbit / Pan / Zoom / Raycasting)
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const onPointerDown = (e: MouseEvent) => {
+      orbitStateRef.current.isDragging = true;
+      orbitStateRef.current.dragButton = e.button;
+      orbitStateRef.current.startX = e.clientX;
+      orbitStateRef.current.startY = e.clientY;
+    };
+
+    const onPointerMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      if (orbitStateRef.current.isDragging) {
+        const dx = e.clientX - orbitStateRef.current.startX;
+        const dy = e.clientY - orbitStateRef.current.startY;
+        orbitStateRef.current.startX = e.clientX;
+        orbitStateRef.current.startY = e.clientY;
+
+        if (orbitStateRef.current.dragButton === 0) {
+          // Orbit
+          orbitStateRef.current.yaw -= dx * 0.006;
+          orbitStateRef.current.pitch = Math.max(
+            0.15,
+            Math.min(1.45, orbitStateRef.current.pitch + dy * 0.005),
+          );
+        } else if (orbitStateRef.current.dragButton === 2) {
+          // Pan
+          const panSpeed = orbitStateRef.current.distance * 0.0012;
+          const { yaw } = orbitStateRef.current;
+          const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+          const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+
+          orbitStateRef.current.target.addScaledVector(right, -dx * panSpeed);
+          orbitStateRef.current.target.addScaledVector(forward, dy * panSpeed);
+        }
+        updateCameraPos();
+      } else {
+        // Raycast hover check
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(vehicleMeshes, true);
+        if (intersects.length > 0) {
+          canvas.style.cursor = 'pointer';
+          let cur: THREE.Object3D | null = intersects[0].object;
+          while (cur && !cur.userData?.vehicleId) {
+            cur = cur.parent;
+          }
+          if (cur && cur.userData?.registrationNumber) {
+            setHoveredVehicleReg(cur.userData.registrationNumber);
+          }
+        } else {
+          canvas.style.cursor = 'grab';
+          setHoveredVehicleReg(null);
+        }
+      }
+    };
+
+    const onPointerUp = (e: MouseEvent) => {
+      const dist = Math.hypot(
+        e.clientX - orbitStateRef.current.startX,
+        e.clientY - orbitStateRef.current.startY,
+      );
+      if (dist < 4) {
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(vehicleMeshes, true);
+        if (intersects.length > 0) {
+          let cur: THREE.Object3D | null = intersects[0].object;
+          while (cur && !cur.userData?.vehicleId) {
+            cur = cur.parent;
+          }
+          if (cur && cur.userData?.vehicleData) {
+            const clickedData = cur.userData.vehicleData as MockVehicle;
+            setSelectedVehicleData(clickedData);
+            if (onSelectVehicle) {
+              onSelectVehicle(clickedData);
+            }
+            orbitStateRef.current.target.copy(cur.position);
+            updateCameraPos();
+          }
+        }
+      }
+      orbitStateRef.current.isDragging = false;
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      orbitStateRef.current.distance = Math.max(
+        18,
+        Math.min(145, orbitStateRef.current.distance + e.deltaY * 0.05),
+      );
+      updateCameraPos();
+    };
+
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
+
+    canvas.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('contextmenu', onContextMenu);
+
+    // Page Visibility API: pause animation loop when backgrounded
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (animFrameIdRef.current) {
+          cancelAnimationFrame(animFrameIdRef.current);
+          animFrameIdRef.current = null;
+        }
+      } else {
+        clock.getDelta(); // flush delta
+        if (!animFrameIdRef.current) {
+          animFrameIdRef.current = requestAnimationFrame(animate);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Cleanup
+    return () => {
+      if (animFrameIdRef.current) {
+        cancelAnimationFrame(animFrameIdRef.current);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      lightsRef.current = null;
+      resizeObserver.disconnect();
+      canvas.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('mousemove', onPointerMove);
+      window.removeEventListener('mouseup', onPointerUp);
+      canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('contextmenu', onContextMenu);
+
+      vehicleMeshes.forEach((mesh) => dispose3DObject(mesh));
+      dispose3DObject(environmentGroup);
+      if (rainParticles) {
+        rainParticles.geometry.dispose();
+        (rainParticles.material as THREE.Material).dispose();
+      }
+      renderer.dispose();
+    };
+  }, [eventType, vehicleRegistration, vehicle, allVehicles]);
+
+  // Reset Camera View
+  const handleResetCamera = useCallback(() => {
+    orbitStateRef.current.yaw = 0.65;
+    orbitStateRef.current.pitch = 0.52;
+    orbitStateRef.current.distance = 72;
+    orbitStateRef.current.target.set(10, 2, 6);
+    if (cameraRef.current) {
+      const { yaw, pitch, distance, target } = orbitStateRef.current;
+      const x = target.x + distance * Math.cos(pitch) * Math.sin(yaw);
+      const y = target.y + distance * Math.sin(pitch);
+      const z = target.z + distance * Math.cos(pitch) * Math.cos(yaw);
+      cameraRef.current.position.set(x, y, z);
+      cameraRef.current.lookAt(target);
     }
-  };
+  }, []);
 
-  // Generic 3D Cuboid helper with Lambertian shading
-  const draw3DBox = (
-    ctx: CanvasRenderingContext2D,
-    cx: number,
-    cy: number,
-    x: number,
-    y: number,
-    z: number,
-    w: number,
-    h: number,
-    d: number,
-    cTop: string,
-    cFront: string,
-    cSide: string,
-  ) => {
-    const hw = w / 2;
-    const hh = h / 2;
-    const hd = d / 2;
-
-    const p = [
-      project3D(x - hw, y - hh, z - hd, cx, cy), // 0: top-front-left
-      project3D(x + hw, y - hh, z - hd, cx, cy), // 1: top-front-right
-      project3D(x + hw, y + hh, z - hd, cx, cy), // 2: bottom-front-right
-      project3D(x - hw, y + hh, z - hd, cx, cy), // 3: bottom-front-left
-      project3D(x - hw, y - hh, z + hd, cx, cy), // 4: top-back-left
-      project3D(x + hw, y - hh, z + hd, cx, cy), // 5: top-back-right
-      project3D(x + hw, y + hh, z + hd, cx, cy), // 6: bottom-back-right
-      project3D(x - hw, y + hh, z + hd, cx, cy), // 7: bottom-back-left
-    ];
-
-    if (p.some((pt) => !pt.visible)) return;
-
-    // Top face
-    ctx.fillStyle = cTop;
-    ctx.beginPath();
-    ctx.moveTo(p[0].x, p[0].y);
-    ctx.lineTo(p[1].x, p[1].y);
-    ctx.lineTo(p[5].x, p[5].y);
-    ctx.lineTo(p[4].x, p[4].y);
-    ctx.closePath();
-    ctx.fill();
-
-    // Front face
-    ctx.fillStyle = cFront;
-    ctx.beginPath();
-    ctx.moveTo(p[0].x, p[0].y);
-    ctx.lineTo(p[1].x, p[1].y);
-    ctx.lineTo(p[2].x, p[2].y);
-    ctx.lineTo(p[3].x, p[3].y);
-    ctx.closePath();
-    ctx.fill();
-
-    // Right face
-    ctx.fillStyle = cSide;
-    ctx.beginPath();
-    ctx.moveTo(p[1].x, p[1].y);
-    ctx.lineTo(p[5].x, p[5].y);
-    ctx.lineTo(p[6].x, p[6].y);
-    ctx.lineTo(p[2].x, p[2].y);
-    ctx.closePath();
-    ctx.fill();
-  };
-
-  // 2D Fallback Vector Engine
-  const render2DFallback = (
-    ctx: CanvasRenderingContext2D,
-    width: number,
-    height: number,
-    type: PredictionEventType,
-    t: number,
-    night: boolean,
-  ) => {
-    const cx = width / 2;
-    const cy = height / 2;
-
-    ctx.fillStyle = night ? '#0f172a' : '#1e293b';
-    ctx.fillRect(0, 0, width, height);
-
-    // Highway Corridor
-    ctx.fillStyle = '#334155';
-    ctx.fillRect(40, cy - 40, width - 80, 80);
-
-    ctx.strokeStyle = '#facc15';
-    ctx.setLineDash([15, 12]);
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(40, cy);
-    ctx.lineTo(width - 40, cy);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // 2D Vehicle Marker
-    ctx.fillStyle = '#0284c7';
-    ctx.fillRect(cx - 50, cy - 25, 100, 50);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 12px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(vehicleRegistration, cx, cy + 4);
-
-    // Event Overlay
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.font = '13px sans-serif';
-    ctx.fillText(`2D Fallback Mode: ${type.toUpperCase()}`, cx, cy - 70);
-  };
-
-  // Mouse Orbit Drag Controls
-  const handleMouseDown = (e: React.MouseEvent) => {
-    isDraggingRef.current = true;
-    lastMousePosRef.current = { x: e.clientX, y: e.clientY };
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDraggingRef.current) return;
-    const dx = e.clientX - lastMousePosRef.current.x;
-    const dy = e.clientY - lastMousePosRef.current.y;
-    cameraAngleRef.current.yaw += dx * 0.008;
-    cameraAngleRef.current.pitch = Math.max(
-      0.1,
-      Math.min(1.2, cameraAngleRef.current.pitch + dy * 0.008),
-    );
-    lastMousePosRef.current = { x: e.clientX, y: e.clientY };
-  };
-
-  const handleMouseUp = () => {
-    isDraggingRef.current = false;
-  };
+  // Format time of day display (e.g., 08:30 AM IST)
+  const formattedTimeOfDay = useMemo(() => {
+    const hours = Math.floor(simulatedHourOfDay);
+    const minutes = Math.floor((simulatedHourOfDay - hours) * 60);
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const h12 = hours % 12 || 12;
+    const mStr = minutes.toString().padStart(2, '0');
+    return `${h12}:${mStr} ${ampm} IST`;
+  }, [simulatedHourOfDay]);
 
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden border border-slate-200/90 bg-slate-950 shadow-sm select-none">
-      {/* 3D Canvas */}
+    <div
+      ref={containerRef}
+      className="relative w-full h-[520px] bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-200/90 select-none"
+    >
+      {/* Three.js Canvas */}
       <canvas
         ref={canvasRef}
-        width={760}
-        height={380}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        className="w-full h-[380px] cursor-grab active:cursor-grabbing block"
+        className="w-full h-full block cursor-grab active:cursor-grabbing outline-none"
       />
 
       {/* Top HUD Controls Overlay */}
-      <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none">
-        <div className="flex items-center gap-2 pointer-events-auto">
-          <div className="px-3 py-1 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/90 text-xs font-bold text-slate-900 flex items-center gap-2 shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-            <span>3D DIGITAL TWIN SCENE</span>
+      <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
+        <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
+          {/* Main Title Badge */}
+          <div className="px-3 py-1.5 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 text-xs font-bold text-slate-900 flex items-center gap-2 shadow-sm">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-mono tracking-tight">3D LOGISTICS DIGITAL TWIN</span>
           </div>
-          <span className="text-[11px] font-mono font-semibold text-slate-700 bg-white/95 backdrop-blur-md px-2.5 py-0.5 rounded-full border border-slate-200/90 shadow-2xs">
-            {eventType.toUpperCase()}
+
+          {/* Explicit State Provenance Badge (Live vs Future vs Scenario) */}
+          <div
+            className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono font-bold flex items-center gap-1.5 shadow-xs ${twinStateMode.color}`}
+          >
+            <span className={`w-2 h-2 rounded-full ${twinStateMode.dot}`} />
+            <span>{twinStateMode.label}</span>
+            <span className="opacity-75 font-normal">({twinStateMode.sub})</span>
+          </div>
+
+          {/* Alternate Corridor Dual-Route Indicator */}
+          {(previewReroute || activeReroute) && (
+            <div
+              className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono font-bold flex items-center gap-1.5 shadow-xs ${
+                activeReroute?.accepted
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                  : 'bg-indigo-50 text-indigo-800 border-indigo-300 animate-pulse'
+              }`}
+            >
+              <Navigation className="w-3.5 h-3.5 text-indigo-600" />
+              <span>
+                {activeReroute?.accepted ? 'ACTIVE REROUTE:' : 'CORRIDOR PREVIEW:'}{' '}
+                {(previewReroute || activeReroute)?.alternate_corridor || 'NE-5 Corridor'}
+              </span>
+              <span className="text-[10px] bg-white/90 text-emerald-700 font-bold px-1.5 py-0.2 rounded border border-emerald-200">
+                -{(previewReroute || activeReroute)?.time_saved_minutes}m
+              </span>
+            </div>
+          )}
+
+          {/* Event Badge */}
+          <span className="text-[11px] font-mono font-bold text-blue-700 bg-blue-50/95 backdrop-blur-md px-2.5 py-1 rounded-lg border border-blue-200 shadow-xs uppercase">
+            {eventType.replace('_', ' ')}
           </span>
+
+          {/* Time of Day & Lighting Indicator */}
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/95 backdrop-blur-md border border-slate-200/90 text-[11px] font-mono font-semibold text-slate-700 shadow-xs">
+            <Clock className="w-3.5 h-3.5 text-blue-600" />
+            <span>{formattedTimeOfDay}</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200 uppercase">
+              {effectiveIsNight ? 'Night Mode' : isSunset ? 'Sunset' : 'Day Mode'}
+            </span>
+          </div>
+
+          {/* Hovered Vehicle Quick Tag */}
+          {hoveredVehicleReg && (
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/90 text-white text-[11px] font-mono border border-slate-700 animate-in fade-in duration-200 shadow-md">
+              <Truck className="w-3 h-3 text-blue-400" />
+              <span>{hoveredVehicleReg} (Click to inspect)</span>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-1.5 pointer-events-auto">
+        <div className="flex items-center gap-2 pointer-events-auto">
+          {/* Day / Night Manual Toggle */}
           <button
-            onClick={() => setIsNight(!isNight)}
-            title="Toggle Day / Night lighting"
-            className="p-2 rounded-lg bg-white/95 hover:bg-slate-50 border border-slate-200/90 text-slate-700 transition-colors shadow-sm cursor-pointer"
+            onClick={() => setIsNightManual((prev) => (prev === null ? !autoIsNight : !prev))}
+            title={effectiveIsNight ? 'Switch to Day Light' : 'Switch to Night Illumination'}
+            className="p-2 rounded-xl bg-white/95 hover:bg-slate-50 border border-slate-200/90 text-slate-700 transition-colors shadow-sm cursor-pointer"
           >
-            {isNight ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-blue-600" />}
+            {effectiveIsNight ? (
+              <Sun className="w-4 h-4 text-amber-500 fill-amber-500/20" />
+            ) : (
+              <Moon className="w-4 h-4 text-indigo-600 fill-indigo-600/20" />
+            )}
           </button>
 
+          {/* Reset Camera */}
           <button
-            onClick={() => setIs3DMode(!is3DMode)}
-            title="Toggle 3D / 2D Perspective"
-            className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer ${
-              is3DMode
-                ? 'bg-blue-50 border-blue-200 text-blue-700'
-                : 'bg-white/95 border-slate-200/90 text-slate-700 hover:bg-slate-50'
-            }`}
+            onClick={handleResetCamera}
+            title="Reset Isometric Camera Angle"
+            className="p-2 rounded-xl bg-white/95 hover:bg-slate-50 border border-slate-200/90 text-slate-700 transition-colors shadow-sm cursor-pointer"
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span>{is3DMode ? '3D Low-Poly' : '2D Fallback'}</span>
+            <RotateCw className="w-4 h-4 text-slate-600" />
           </button>
         </div>
       </div>
 
-      {/* Bottom Simulation Scrubber Bar */}
-      <div className="absolute bottom-3 left-3 right-3 p-2.5 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 flex flex-wrap items-center justify-between gap-3 text-slate-900 shadow-md">
-        <div className="flex items-center gap-2">
+      {/* Floating 3D Telemetry HUD Card (Section 11) */}
+      {selectedVehicleData && (
+        <div className="absolute top-16 left-3 w-84 max-w-[calc(100%-24px)] bg-white/95 backdrop-blur-md rounded-2xl p-4 border border-slate-200/90 shadow-2xl text-slate-900 z-20 animate-in fade-in slide-in-from-top-2 duration-300">
+          {/* Header */}
+          <div className="flex items-start justify-between pb-2.5 border-b border-slate-100">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 shadow-xs">
+                <Truck className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="font-mono font-black text-sm text-slate-900 tracking-tight">
+                  {selectedVehicleData.registration_number}
+                </div>
+                <div className="text-[11px] text-slate-500 capitalize font-medium">
+                  {selectedVehicleData.truck_type.replace('_', ' ')} • {selectedVehicleData.status.replace('_', ' ')}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setSelectedVehicleData(null)}
+              className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Operational Status Pill if on Dhaba break */}
+          {eventType === 'driver_break' && (
+            <div className="my-2.5 p-2 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-900 text-xs">
+              <div className="flex items-center justify-between font-bold text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <Coffee className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Dhaba Rest Simulation</span>
+                </div>
+                <span className="font-mono bg-amber-200/70 text-amber-900 px-1.5 py-0.2 rounded">
+                  {dhabaStepInfo.remainingMinutes}m Rest Left
+                </span>
+              </div>
+              <div className="text-[11px] font-medium text-amber-800 mt-1 leading-snug">
+                {dhabaStepInfo.stepTitle}
+              </div>
+            </div>
+          )}
+
+          {/* Grid Telemetry Metrics */}
+          <div className="grid grid-cols-2 gap-2 my-2.5 text-xs">
+            {/* Speed with Live Gauge */}
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70">
+              <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                <span>Speed</span>
+                <Gauge className="w-3.5 h-3.5 text-blue-500" />
+              </div>
+              <div className="font-mono font-black text-sm text-slate-900 mt-0.5">
+                {selectedVehicleData.id === 'hero-1' || !selectedVehicleData.id
+                  ? liveHeroSpeed
+                  : selectedVehicleData.speed_kmh}{' '}
+                km/h
+              </div>
+            </div>
+
+            {/* Heading Angle & Compass */}
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70">
+              <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                <span>Road Heading</span>
+                <Compass className="w-3.5 h-3.5 text-emerald-500" />
+              </div>
+              <div className="font-mono font-black text-sm text-emerald-600 mt-0.5">
+                {selectedVehicleData.id === 'hero-1' || !selectedVehicleData.id
+                  ? liveHeroHeadingDeg
+                  : 90}
+                ° (Locked)
+              </div>
+            </div>
+
+            {/* Progress % */}
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70">
+              <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                <span>Journey Progress</span>
+                <Activity className="w-3.5 h-3.5 text-indigo-500" />
+              </div>
+              <div className="font-mono font-bold text-slate-900 mt-0.5">
+                {Math.min(
+                  99,
+                  Math.round(
+                    selectedVehicleData.progress_pct + (timelineHour / 48) * (100 - selectedVehicleData.progress_pct),
+                  ),
+                )}
+                %
+              </div>
+            </div>
+
+            {/* Fuel & Range */}
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70">
+              <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                <span>Fuel Level</span>
+                <Fuel className="w-3.5 h-3.5 text-amber-500" />
+              </div>
+              <div className="font-mono font-bold text-slate-900 mt-0.5">
+                {Math.max(15, Math.round(78 - (timelineHour / 48) * 35))}% (Diesel)
+              </div>
+            </div>
+
+            {/* Corridor Route */}
+            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 col-span-2">
+              <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                <span>Logistics Corridor</span>
+                <Navigation className="w-3 h-3 text-slate-400" />
+              </div>
+              <div className="font-semibold text-slate-800 text-xs truncate mt-0.5">
+                {selectedVehicleData.route?.corridor || 'Golden Corridor NH-48'}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">
+                <span>
+                  {selectedVehicleData.route?.origin_city || 'Mumbai'} →{' '}
+                  {selectedVehicleData.route?.destination_city || 'Bengaluru'}
+                </span>
+              </div>
+            </div>
+
+            {/* Driver & Rest Compliance */}
+            {selectedVehicleData.driver && (
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 col-span-2 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] text-slate-500">Driver & HOS Duty</div>
+                  <div className="font-semibold text-slate-800 text-xs mt-0.5">
+                    {selectedVehicleData.driver.name}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    {selectedVehicleData.driver.rest_hours_compliance}
+                  </span>
+                  <div className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                    {selectedVehicleData.driver.hours_driven_today || 3.5}/10h driven
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Data Disclosure Notice (Section 15 Scenario 9) */}
+          <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+            <span className="inline-flex items-center gap-1 font-semibold text-blue-600">
+              <Zap className="w-3 h-3" />
+              PREDICTIVE TWIN STATE
+            </span>
+            <span className="font-mono text-slate-400">94.8% SLA Confidence</span>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Simulation Scrubber & 48-Hour Horizon Playback Bar */}
+      <div className="absolute bottom-3 left-3 right-3 p-3 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 flex flex-wrap items-center justify-between gap-3 text-slate-900 shadow-xl z-10">
+        <div className="flex items-center gap-3">
+          {/* Play/Pause Button */}
           <button
             onClick={() => setIsPlaying(!isPlaying)}
-            className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-xs cursor-pointer"
+            className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-md shadow-blue-500/25 cursor-pointer active:scale-95"
             title={isPlaying ? 'Pause Simulation' : 'Play 48h Future Trajectory'}
           >
-            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
+            {isPlaying ? (
+              <Pause className="w-4 h-4 fill-current" />
+            ) : (
+              <Play className="w-4 h-4 fill-current ml-0.5" />
+            )}
           </button>
 
-          <div className="text-xs">
-            <div className="font-mono font-bold text-blue-700">
-              +{timelineHour.toFixed(1)}h Future Horizon
+          {/* Time Horizon Info */}
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono font-black text-xs text-blue-700">
+                +{timelineHour.toFixed(1)}h Future Horizon
+              </span>
+              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                {activeFleetCount} Active Fleets
+              </span>
             </div>
-            <div className="text-[10px] text-slate-500 font-medium">
-              {currentEvent ? currentEvent.location_name : 'National Freight Corridor'}
+            <div className="text-[11px] text-slate-500 font-medium truncate max-w-[240px] sm:max-w-xs mt-0.5">
+              {currentEvent ? currentEvent.location_name : 'National Freight Logistics Corridor'}
             </div>
           </div>
         </div>
 
-        {/* Speed Toggle */}
-        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+        {/* 48h Interactive Range Scrubber */}
+        <div className="hidden lg:flex items-center gap-2 flex-1 max-w-xs mx-4">
+          <span className="text-[10px] font-mono text-slate-500">0h</span>
+          <input
+            type="range"
+            min="0"
+            max="48"
+            step="0.5"
+            value={timelineHour}
+            onChange={(e) => setTimelineHour(parseFloat(e.target.value))}
+            className="w-full accent-blue-600 cursor-pointer h-1.5 bg-slate-200 rounded-lg"
+          />
+          <span className="text-[10px] font-mono text-slate-500">48h</span>
+        </div>
+
+        {/* Playback Speed Toggles */}
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
           {([1, 5, 10] as const).map((spd) => (
             <button
               key={spd}
               onClick={() => setPlaySpeed(spd)}
-              className={`px-2 py-0.5 rounded font-mono text-[11px] transition-colors cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg font-mono text-xs transition-all cursor-pointer ${
                 playSpeed === spd
-                  ? 'bg-blue-600 text-white font-bold shadow-2xs'
+                  ? 'bg-blue-600 text-white font-bold shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 font-medium'
               }`}
             >
@@ -781,12 +1536,12 @@ export const ThreeEventScene: React.FC<ThreeEventSceneProps> = ({
           ))}
         </div>
 
-        <div className="text-[11px] text-slate-500 font-medium hidden sm:flex items-center gap-1.5">
+        {/* Camera interaction tips */}
+        <div className="text-[11px] text-slate-500 font-medium hidden xl:flex items-center gap-1.5">
           <Eye className="w-3.5 h-3.5 text-blue-600" />
-          <span>Click & drag on 3D canvas to orbit camera</span>
+          <span>Left-drag to orbit • Right-drag to pan • Scroll to zoom • Click truck to inspect</span>
         </div>
       </div>
     </div>
   );
 };
-

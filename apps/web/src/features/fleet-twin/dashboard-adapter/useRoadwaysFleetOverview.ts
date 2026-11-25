@@ -7,6 +7,9 @@ import {
   VehicleStatus,
   DriverStatus,
   UserRole,
+  OsrmRouteGeometry,
+  getOsrmCorridor,
+  findOsrmCorridorByCities,
 } from '@nexus-ways/shared';
 import { FleetTwinOverview, FleetTwinVehicleOverview, TruckStatus } from '@nexus-ways/shared';
 import { fleetTwinApi } from '../services/fleetTwinApi';
@@ -149,12 +152,55 @@ export function useRoadwaysFleetOverview({
 
     const twinVehiclesFormatted: EnrichedRoadwaysVehicle[] = twinOverview.vehicles.map(
       (tv: FleetTwinVehicleOverview, idx: number) => {
-        // Slight dynamic drift for live telemetry visualization
-        const isMoving = tv.speed_kmh > 0;
-        const driftLat = isMoving ? Math.sin((tick * 0.15) + idx) * 0.002 : 0;
-        const driftLng = isMoving ? Math.cos((tick * 0.15) + idx) * 0.002 : 0;
-        const lat = tv.current_lat + driftLat;
-        const lng = tv.current_lng + driftLng;
+        // Resolve authentic OSRM highway geometry
+        const corridorGeom: OsrmRouteGeometry | null =
+          tv.route?.osrm_geometry ||
+          (tv.route?.corridor ? getOsrmCorridor(tv.route.corridor) : null) ||
+          (tv.route ? findOsrmCorridorByCities(tv.route.origin_city, tv.route.destination_city) : null);
+
+        // Calculate smooth position and heading along actual OSRM road coordinates
+        let lat = tv.current_lat;
+        let lng = tv.current_lng;
+        let heading = 90;
+        let dynamicProgress = tv.progress_pct;
+
+        if (corridorGeom && corridorGeom.coordinates && corridorGeom.coordinates.length > 1) {
+          const coords = corridorGeom.coordinates;
+          const isMoving = tv.speed_kmh > 0 && tv.status !== 'idle' && tv.status !== 'resting';
+
+          // Advance progress realistically per simulation tick
+          if (isMoving) {
+            const kmPerTick = (tv.speed_kmh * 3) / 3600;
+            const progressAdvancePct = (kmPerTick / (corridorGeom.distance_km || 300)) * 100;
+            dynamicProgress = Math.min(100, (tv.progress_pct + (tick * progressAdvancePct * 2)) % 100);
+          }
+
+          const totalIndices = coords.length - 1;
+          const fractionalIndex = (dynamicProgress / 100) * totalIndices;
+          const baseIndex = Math.min(totalIndices - 1, Math.max(0, Math.floor(fractionalIndex)));
+          const remainder = fractionalIndex - baseIndex;
+
+          const p1 = coords[baseIndex];
+          const p2 = coords[Math.min(totalIndices, baseIndex + 1)];
+
+          // Exact road coordinate interpolation
+          lng = p1[0] + (p2[0] - p1[0]) * remainder;
+          lat = p1[1] + (p2[1] - p1[1]) * remainder;
+
+          // Road segment bearing
+          const dLng = ((p2[0] - p1[0]) * Math.PI) / 180;
+          const φ1 = (p1[1] * Math.PI) / 180;
+          const φ2 = (p2[1] * Math.PI) / 180;
+          const y = Math.sin(dLng) * Math.cos(φ2);
+          const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dLng);
+          heading = Math.round(((Math.atan2(y, x) * 180) / Math.PI + 360) % 360);
+        } else {
+          const isMoving = tv.speed_kmh > 0;
+          const driftLat = isMoving ? Math.sin((tick * 0.15) + idx) * 0.0005 : 0;
+          const driftLng = isMoving ? Math.cos((tick * 0.15) + idx) * 0.0005 : 0;
+          lat = tv.current_lat + driftLat;
+          lng = tv.current_lng + driftLng;
+        }
 
         const truckLabel = formatTruckType(tv.truck_type);
         const routeShortName = tv.route
@@ -163,6 +209,25 @@ export function useRoadwaysFleetOverview({
 
         const vehicleStatus: VehicleStatus =
           tv.status === 'idle' ? 'idle' : 'active';
+
+        // High-resolution OSRM highway geometry for active trip
+        const activeRouteGeometry: OsrmRouteGeometry | null = corridorGeom
+          ? {
+              routing_source: 'osrm',
+              routing_status: 'OSRM_SUCCESS',
+              coordinates: corridorGeom.coordinates,
+              distance_km: corridorGeom.distance_km,
+              duration_minutes: corridorGeom.duration_minutes,
+            }
+          : tv.route?.waypoints
+          ? {
+              routing_source: 'fallback-straight-line',
+              routing_status: 'FALLBACK_ROUTE',
+              coordinates: tv.route.waypoints.map((wp) => [wp[1], wp[0]]),
+              distance_km: tv.route.total_distance_km,
+              duration_minutes: Math.round((tv.route.total_distance_km / 50) * 60),
+            }
+          : null;
 
         return {
           id: tv.id,
@@ -199,7 +264,7 @@ export function useRoadwaysFleetOverview({
             lat,
             lng,
             speed_kmh: tv.speed_kmh,
-            heading: 90,
+            heading,
             recorded_at: new Date().toISOString(),
           },
           active_trip: tv.route
@@ -210,25 +275,22 @@ export function useRoadwaysFleetOverview({
                 driver_id: tv.driver?.id || '',
                 origin_label: tv.route.origin_city,
                 destination_label: tv.route.destination_city,
-                origin_lat: tv.route.waypoints?.[0]?.[0] || lat,
-                origin_lng: tv.route.waypoints?.[0]?.[1] || lng,
+                origin_lat: corridorGeom?.coordinates?.[0]?.[1] || tv.route.waypoints?.[0]?.[0] || lat,
+                origin_lng: corridorGeom?.coordinates?.[0]?.[0] || tv.route.waypoints?.[0]?.[1] || lng,
                 destination_lat:
-                  tv.route.waypoints?.[tv.route.waypoints.length - 1]?.[0] || lat,
+                  corridorGeom?.coordinates?.[corridorGeom.coordinates.length - 1]?.[1] ||
+                  tv.route.waypoints?.[tv.route.waypoints.length - 1]?.[0] ||
+                  lat,
                 destination_lng:
-                  tv.route.waypoints?.[tv.route.waypoints.length - 1]?.[1] || lng,
+                  corridorGeom?.coordinates?.[corridorGeom.coordinates.length - 1]?.[0] ||
+                  tv.route.waypoints?.[tv.route.waypoints.length - 1]?.[1] ||
+                  lng,
                 status: tv.status === 'idle' ? 'planned' : 'in_transit',
-                distance_km: tv.route.total_distance_km,
-                duration_minutes: 360,
+                distance_km: corridorGeom?.distance_km || tv.route.total_distance_km,
+                duration_minutes: corridorGeom?.duration_minutes || 360,
                 simulation_speed_multiplier: 1,
                 created_at: new Date().toISOString(),
-                route_geometry: tv.route.waypoints
-                  ? {
-                      routing_source: 'osrm' as const,
-                      coordinates: tv.route.waypoints.map((wp) => [wp[1], wp[0]]),
-                      distance_km: tv.route.total_distance_km,
-                      duration_minutes: Math.round((tv.route.total_distance_km / 50) * 60),
-                    }
-                  : null,
+                route_geometry: activeRouteGeometry,
                 checkpoints: tv.route.waypoints
                   ? tv.route.waypoints.map((wp, i) => ({
                       id: `cp-${tv.id}-${i}`,
@@ -249,7 +311,7 @@ export function useRoadwaysFleetOverview({
           // Twin specific enrichment
           is_twin: true,
           twin_status: tv.status,
-          progress_pct: tv.progress_pct,
+          progress_pct: Math.round(dynamicProgress * 10) / 10,
           route_name: tv.route?.name,
           route_short_name: routeShortName,
           next_checkpoint_name: tv.next_checkpoint_name,

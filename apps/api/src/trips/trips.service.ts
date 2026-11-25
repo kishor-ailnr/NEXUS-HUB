@@ -21,6 +21,7 @@ import {
   OsrmRouteGeometry,
   TripEtaResponse,
   TripReportUrlResponse,
+  findOsrmCorridorByCities,
 } from '@nexus-ways/shared';
 
 @Injectable()
@@ -85,11 +86,33 @@ export class TripsService {
       scoreByTrip.set(sc.trip_id, sc);
     });
 
-    return trips.map((t) => ({
-      ...t,
-      checkpoints: cpByTrip.get(t.id) || t.checkpoints || [],
-      driver_score: scoreByTrip.get(t.id) || null,
-    }));
+    // Batch load verified OSRM road geometries from saved_routes
+    const { data: savedRoutes } = await this.supabase.adminClient
+      .from('saved_routes')
+      .select('origin_label, destination_label, osrm_geometry')
+      .eq('org_id', orgId);
+
+    const routeMap = new Map<string, OsrmRouteGeometry>();
+    (savedRoutes || []).forEach((sr) => {
+      if (sr.osrm_geometry) {
+        routeMap.set(`${sr.origin_label}:::${sr.destination_label}`, sr.osrm_geometry);
+      }
+    });
+
+    return trips.map((t) => {
+      const routeGeom =
+        routeMap.get(`${t.origin_label}:::${t.destination_label}`) ||
+        (t.origin_label && t.destination_label ? findOsrmCorridorByCities(t.origin_label, t.destination_label) : null) ||
+        t.route_geometry ||
+        null;
+
+      return {
+        ...t,
+        route_geometry: routeGeom,
+        checkpoints: cpByTrip.get(t.id) || t.checkpoints || [],
+        driver_score: scoreByTrip.get(t.id) || null,
+      };
+    });
   }
 
   async findSavedRoutes(orgId: string, origin?: string, destination?: string): Promise<SavedRoute[]> {
@@ -165,6 +188,8 @@ export class TripsService {
 
       if (savedRoute?.osrm_geometry) {
         trip.route_geometry = savedRoute.osrm_geometry;
+      } else {
+        trip.route_geometry = findOsrmCorridorByCities(trip.origin_label, trip.destination_label) || null;
       }
     }
 

@@ -45,8 +45,25 @@ export default defineConfig({
       '/voyages': { target: 'http://localhost:4000', changeOrigin: true },
       '/voyage-movements': { target: 'http://localhost:4000', changeOrigin: true },
       '/sea-convoys': { target: 'http://localhost:4000', changeOrigin: true },
+      '/fleet-twin': { target: 'http://localhost:4000', changeOrigin: true },
+      '/api': { target: 'http://localhost:4000', changeOrigin: true },
       '/admin': { target: 'http://localhost:4000', changeOrigin: true },
       '/socket.io': { target: 'http://localhost:4000', ws: true, changeOrigin: true },
+    },
+  },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-three': ['three'],
+          'vendor-maps': ['leaflet', 'react-leaflet'],
+          'vendor-supabase': ['@supabase/supabase-js'],
+          'vendor-socket': ['socket.io-client'],
+          'vendor-ui': ['lucide-react', 'clsx', 'tailwind-merge', 'sonner'],
+          'vendor-core': ['react', 'react-dom', 'react-router-dom', 'zustand'],
+        },
+      },
     },
   },
   test: {

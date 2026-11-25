@@ -33,6 +33,7 @@ import {
   LiveVesselTelemetryPayload,
 } from '@nexus-ways/shared';
 import { useAuthStore } from '../store/authStore';
+import { useDashboardDataStore } from '../store/dashboardDataStore';
 import { dashboardService } from '../services/dashboard';
 import { notificationsService } from '../services/notifications';
 import { socketService, LiveRailTelemetryPayload, LiveFlightTelemetryPayload } from '../services/socket';
@@ -47,6 +48,7 @@ import { seawaysService } from '../services/seaways';
 import { NotFound } from './NotFound';
 import { DriverDashboard } from './DriverDashboard';
 import { MiniMap } from '../components/MiniMap';
+import { UserLocationPermissionModal } from '../components/UserLocationPermissionModal';
 import { StatsRow } from '../components/StatsRow';
 import { SystemStatusRow } from '../components/SystemStatusRow';
 import { NotificationDrawer } from '../components/NotificationDrawer';
@@ -56,6 +58,7 @@ import { VehicleSidebarPlaceholder } from '../components/VehicleSidebarPlacehold
 import { RoadwaysMap } from '../components/RoadwaysMap';
 import { CreateTripModal } from '../components/CreateTripModal';
 import { TripDetailsPanel } from '../components/TripDetailsPanel';
+import { LiveFleetIntelligenceSidebar } from '../components/LiveFleetIntelligenceSidebar';
 import { AiAssistantWidget } from '../components/AiAssistantWidget';
 import { RailwaysSidebar } from '../components/RailwaysSidebar';
 import { RailwaysMap } from '../components/RailwaysMap';
@@ -102,26 +105,51 @@ export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
 
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [isLoadingStats, setIsLoadingStats] = useState(true);
-  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  const {
+    stats: storeStats,
+    systemStatus: storeSystemStatus,
+    notifications: storeNotifications,
+    unreadCount: storeUnreadCount,
+    networkLatency: storeNetworkLatency,
+    vehicles: storeVehicles,
+    drivers: storeDrivers,
+    trips: storeTrips,
+    geofences: storeGeofences,
+    convoys: storeConvoys,
+    selectedVehicleId,
+    selectedTrip,
+    isLiveDetailsOpen,
+    isLoading: isStoreLoading,
+    fetchDashboardData,
+    setSelectedVehicleId,
+    setSelectedTrip,
+    setIsLiveDetailsOpen,
+    setVehicles: setStoreVehicles,
+    setDrivers: setStoreDrivers,
+    setTrips: setStoreTrips,
+    setNotifications: setStoreNotifications,
+    setUnreadCount: setStoreUnreadCount,
+    updateVehiclePosition,
+  } = useDashboardDataStore();
+
+  const [localStats, setLocalStats] = useState<DashboardStats | null>(null);
+  const [localIsLoadingStats, setLocalIsLoadingStats] = useState(true);
+  const [localSystemStatus, setLocalSystemStatus] = useState<SystemStatus | null>(null);
   const [isWsConnected, setIsWsConnected] = useState(false);
-  const [networkLatency, setNetworkLatency] = useState<{
+  const [localNetworkLatency, setLocalNetworkLatency] = useState<{
     latencyMs: number;
     quality: 'Good' | 'Fair' | 'Poor';
   } | null>(null);
 
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [localNotifications, setLocalNotifications] = useState<NotificationItem[]>([]);
+  const [localUnreadCount, setLocalUnreadCount] = useState(0);
 
   // Phase 4 & Phase 5 Roadways Operational & Intelligence State
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [geofences, setGeofences] = useState<Geofence[]>([]);
-  const [convoys, setConvoys] = useState<ConvoyGroup[]>([]);
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
-  const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
+  const [localVehicles, setLocalVehicles] = useState<Vehicle[]>([]);
+  const [localDrivers, setLocalDrivers] = useState<Driver[]>([]);
+  const [localTrips, setLocalTrips] = useState<Trip[]>([]);
+  const [localGeofences, setLocalGeofences] = useState<Geofence[]>([]);
+  const [localConvoys, setLocalConvoys] = useState<ConvoyGroup[]>([]);
   const [ghostPositions, setGhostPositions] = useState<Record<string, GhostPositionPayload>>({});
 
   // Trip Creation Modal State
@@ -164,6 +192,31 @@ export const Dashboard: React.FC = () => {
   const [isVoyageModalOpen, setIsVoyageModalOpen] = useState(false);
   const [seaTelemetry, setSeaTelemetry] = useState<Record<string, LiveVesselTelemetryPayload>>({});
 
+  const isRoadways = mode === 'roadways';
+  const stats = isRoadways ? storeStats : localStats;
+  const setStats = isRoadways ? () => {} : setLocalStats;
+  const isLoadingStats = isRoadways ? (isStoreLoading && !storeStats) : localIsLoadingStats;
+  const setIsLoadingStats = isRoadways ? () => {} : setLocalIsLoadingStats;
+  const systemStatus = isRoadways ? storeSystemStatus : localSystemStatus;
+  const setSystemStatus = isRoadways ? () => {} : setLocalSystemStatus;
+  const networkLatency = isRoadways ? storeNetworkLatency : localNetworkLatency;
+  const setNetworkLatency = isRoadways ? () => {} : setLocalNetworkLatency;
+  const notifications = isRoadways ? storeNotifications : localNotifications;
+  const setNotifications = isRoadways ? setStoreNotifications : setLocalNotifications;
+  const unreadCount = isRoadways ? storeUnreadCount : localUnreadCount;
+  const setUnreadCount = isRoadways ? setStoreUnreadCount : setLocalUnreadCount;
+
+  const vehicles = isRoadways ? storeVehicles : localVehicles;
+  const setVehicles = isRoadways ? setStoreVehicles : setLocalVehicles;
+  const drivers = isRoadways ? storeDrivers : localDrivers;
+  const setDrivers = isRoadways ? setStoreDrivers : setLocalDrivers;
+  const trips = isRoadways ? storeTrips : localTrips;
+  const setTrips = isRoadways ? setStoreTrips : setLocalTrips;
+  const geofences = isRoadways ? storeGeofences : localGeofences;
+  const setGeofences = isRoadways ? () => {} : setLocalGeofences;
+  const convoys = isRoadways ? storeConvoys : localConvoys;
+  const setConvoys = isRoadways ? () => {} : setLocalConvoys;
+
   // FLEET-TWIN integration - removable
   const {
     stats: roadwaysMergedStats,
@@ -173,7 +226,7 @@ export const Dashboard: React.FC = () => {
     realStats: stats,
     realVehicles: vehicles,
     realTrips: trips,
-    isRoadways: mode === 'roadways',
+    isRoadways,
   });
 
   if (!isValidOrgMode(mode)) {
@@ -186,7 +239,6 @@ export const Dashboard: React.FC = () => {
   }
 
   const currentMode = mode as OrgMode;
-  const isRoadways = currentMode === 'roadways';
   const isRailways = currentMode === 'railways';
   const isAirways = currentMode === 'airways';
   const isSeaways = currentMode === 'seaways';
@@ -196,36 +248,23 @@ export const Dashboard: React.FC = () => {
   // 1. Fetch dashboard data & fleet operational data
   const loadDashboardData = useCallback(async () => {
     try {
-      setIsLoadingStats(true);
-      const [statsData, statusData, notifsData, countData, latency] = await Promise.all([
-        dashboardService.getStats().catch(() => null),
-        dashboardService.getSystemStatus().catch(() => null),
-        notificationsService.getNotifications().catch(() => []),
-        notificationsService.getUnreadCount().catch(() => 0),
-        dashboardService.measureClientLatency(),
-      ]);
-
-      if (statsData) setStats(statsData);
-      if (statusData) setSystemStatus(statusData);
-      setNotifications(notifsData);
-      setUnreadCount(countData);
-      setNetworkLatency(latency);
-
-      // Load Roadways operational fleet data
       if (isRoadways) {
-        const [vList, dList, tList, gList, cList] = await Promise.all([
-          vehiclesService.getVehicles().catch(() => []),
-          driversService.getDrivers().catch(() => []),
-          tripsService.getTrips().catch(() => []),
-          geofencesService.getGeofences().catch(() => []),
-          convoysService.getConvoys().catch(() => []),
+        await fetchDashboardData('roadways');
+      } else {
+        setIsLoadingStats(true);
+        const [statsData, statusData, notifsData, countData, latency] = await Promise.all([
+          dashboardService.getStats().catch(() => null),
+          dashboardService.getSystemStatus().catch(() => null),
+          notificationsService.getNotifications().catch(() => []),
+          notificationsService.getUnreadCount().catch(() => 0),
+          dashboardService.measureClientLatency(),
         ]);
 
-        setVehicles(vList);
-        setDrivers(dList);
-        setTrips(tList);
-        setGeofences(gList);
-        setConvoys(cList);
+        if (statsData) setStats(statsData);
+        if (statusData) setSystemStatus(statusData);
+        setNotifications(notifsData);
+        setUnreadCount(countData);
+        setNetworkLatency(latency);
       }
 
       // Load Railways operational data
@@ -306,6 +345,9 @@ export const Dashboard: React.FC = () => {
       },
       (gps) => {
         // Live GPS point broadcast from Roadways simulation engine
+        if (isRoadways) {
+          updateVehiclePosition(gps.vehicleId, gps.lat, gps.lng, gps.speed_kmh);
+        }
         setVehicles((prev) =>
           prev.map((v) => {
             if (v.id === gps.vehicleId) {
@@ -409,18 +451,32 @@ export const Dashboard: React.FC = () => {
       socketService.offSeaTelemetry(handleSeaTelemetry);
       socketService.offSeaGhost(handleSeaGhost);
       socketService.offSeaCompleted(handleSeaCompleted);
-      socketService.disconnect();
     };
   }, [loadDashboardData]);
 
   // Roadways handlers
   const handleSelectVehicle = (vehicle: Vehicle) => {
-    setSelectedVehicleId((prev) => (prev === vehicle.id ? null : vehicle.id));
-    const vehicleTrip = trips.find(
+    setSelectedVehicleId(selectedVehicleId === vehicle.id ? null : vehicle.id);
+    const vehicleTrip = (roadwaysMergedTrips.length > 0 ? roadwaysMergedTrips : trips).find(
       (t) => t.vehicle_id === vehicle.id && (t.status === 'in_transit' || t.status === 'planned'),
     );
-    setSelectedTrip(vehicleTrip || null);
+    setSelectedTrip(vehicleTrip || (vehicle as any).active_trip || null);
   };
+
+  // Listen for Live Details trigger (e.g. from Leaflet map popup)
+  useEffect(() => {
+    const handleOpenLiveDetailsEvent = (e: any) => {
+      const vId = e.detail?.vehicleId;
+      if (vId) {
+        setSelectedVehicleId(vId);
+        setIsLiveDetailsOpen(true);
+      }
+    };
+    window.addEventListener('nexus:open-live-details', handleOpenLiveDetailsEvent);
+    return () => {
+      window.removeEventListener('nexus:open-live-details', handleOpenLiveDetailsEvent);
+    };
+  }, []);
 
   const handleMarkNotificationAsRead = async (id: string) => {
     await notificationsService.markAsRead(id);
@@ -510,10 +566,13 @@ export const Dashboard: React.FC = () => {
   const selectedVoyageMovement =
     voyageMovementsList.find((m) => m.id === selectedVoyageMovementId) || null;
 
-  const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId) || null;
+  const selectedVehicle =
+    (roadwaysMergedVehicles.length > 0 ? roadwaysMergedVehicles : vehicles).find(
+      (v) => v.id === selectedVehicleId,
+    ) || null;
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 text-slate-900 antialiased font-sans">
+    <div className="flex flex-col h-screen overflow-hidden bg-slate-50 text-slate-900 antialiased font-sans">
       {/* Universal Top Header - Clean Paper-White Single-Row Enterprise Bar */}
       <header className="border-b border-slate-200/90 bg-white/95 backdrop-blur-md sticky top-0 z-40 shadow-xs">
         <div className="max-w-[1920px] mx-auto px-4 h-14 sm:h-15 flex items-center justify-between gap-3 sm:gap-4">
@@ -579,13 +638,13 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* CENTER SECTION: Live Map Preview Cleanly Aligned */}
-          <div className="hidden xl:flex items-center justify-center flex-shrink-0">
+          {/* CENTER SECTION: Live Detected Location & Interactive Map Trigger */}
+          <div className="hidden lg:flex items-center justify-center flex-shrink-0">
             <MiniMap
               latitude={user?.organization?.latitude}
               longitude={user?.organization?.longitude}
               orgName={user?.organization?.name}
-              className="h-9 w-32 xl:w-36"
+              className="h-9 w-auto min-w-[150px] max-w-[220px]"
             />
           </div>
 
@@ -648,17 +707,26 @@ export const Dashboard: React.FC = () => {
       <main className="flex-1 flex flex-col overflow-hidden bg-slate-50">
         {/* ROADWAYS WORKSPACE */}
         {isRoadways && (
-          <div className="flex-1 p-4 space-y-4 max-w-[1920px] w-full mx-auto flex flex-col">
+          <div className="flex-1 flex flex-col h-[calc(100vh-60px)] overflow-hidden p-3 sm:p-4 max-w-[1920px] w-full mx-auto">
             {/* FLEET-TWIN integration - removable: merged stats with live simulation */}
-            <StatsRow stats={roadwaysMergedStats || stats} isLoading={isLoadingStats} />
+            <div className="flex-shrink-0 mb-3 sm:mb-4">
+              <StatsRow stats={roadwaysMergedStats || stats} isLoading={isLoadingStats} />
+            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 flex-1 min-h-[550px]">
-              <aside className="lg:col-span-1 min-h-[550px]">
+            <div className="flex-1 flex overflow-hidden gap-3 sm:gap-4 min-h-0">
+              {/* Left Fleet Registry Sidebar */}
+              <aside className="w-80 xl:w-92 shrink-0 h-full min-h-0 flex flex-col overflow-hidden">
                 <VehicleSidebar
                   vehicles={roadwaysMergedVehicles.length > 0 ? roadwaysMergedVehicles : vehicles}
                   drivers={drivers}
                   selectedVehicleId={selectedVehicleId}
-                  onSelectVehicle={handleSelectVehicle}
+                  onSelectVehicle={(v) => {
+                    handleSelectVehicle(v);
+                  }}
+                  onOpenLiveDetails={(v) => {
+                    handleSelectVehicle(v);
+                    setIsLiveDetailsOpen(true);
+                  }}
                   onVehicleCreated={handleVehicleCreated}
                   onDriverCreated={handleDriverCreated}
                   onCreateTrip={handleOpenTripModalForVehicle}
@@ -666,7 +734,8 @@ export const Dashboard: React.FC = () => {
                 />
               </aside>
 
-              <div className="lg:col-span-3 min-h-[550px] rounded-xl overflow-hidden border border-slate-800 shadow-xs relative bg-white">
+              {/* Center Map (flex-1 shrinks smoothly when right docked sidebar opens) */}
+              <div className="flex-1 min-w-0 h-full flex flex-col rounded-xl overflow-hidden border border-slate-200/90 shadow-xs relative bg-white">
                 <RoadwaysMap
                   vehicles={roadwaysMergedVehicles.length > 0 ? roadwaysMergedVehicles : vehicles}
                   activeTrips={roadwaysMergedTrips.length > 0 ? roadwaysMergedTrips : trips}
@@ -674,8 +743,40 @@ export const Dashboard: React.FC = () => {
                   ghostPositions={ghostPositions}
                   selectedVehicleId={selectedVehicleId}
                   onSelectVehicle={handleSelectVehicle}
+                  onOpenLiveDetails={(v) => {
+                    handleSelectVehicle(v);
+                    setIsLiveDetailsOpen(true);
+                  }}
+                  onClearSelection={() => {
+                    setSelectedVehicleId(null);
+                    setSelectedTrip(null);
+                    setIsLiveDetailsOpen(false);
+                  }}
                 />
               </div>
+
+              {/* Right: Docked Live Fleet Intelligence Sidebar (DOES NOT OVERLAY THE MAP) */}
+              {isLiveDetailsOpen && selectedVehicle && (
+                <aside
+                  className="w-[440px] xl:w-[480px] shrink-0 h-full min-h-0 flex flex-col rounded-xl border border-slate-200/90 shadow-xs bg-white overflow-hidden transition-all duration-300 animate-in slide-in-from-right"
+                  data-testid="live-fleet-intelligence-sidebar"
+                  aria-label="Live Fleet Intelligence Sidebar"
+                >
+                  <LiveFleetIntelligenceSidebar
+                    vehicle={selectedVehicle}
+                    trip={
+                      selectedTrip ||
+                      (selectedVehicle as any).active_trip ||
+                      (roadwaysMergedTrips.length > 0 ? roadwaysMergedTrips : trips).find(
+                        (t) => t.vehicle_id === selectedVehicle.id,
+                      )
+                    }
+                    geofences={geofences}
+                    onClose={() => setIsLiveDetailsOpen(false)}
+                    currentUserRole={user?.role}
+                  />
+                </aside>
+              )}
             </div>
           </div>
         )}
@@ -860,17 +961,7 @@ export const Dashboard: React.FC = () => {
         />
       )}
 
-      {/* Roadways Fleet Vehicle & Trip Intelligence Sidebar */}
-      {isRoadways && (selectedTrip || selectedVehicle) && (
-        <TripDetailsPanel
-          trip={selectedTrip}
-          vehicle={selectedVehicle}
-          onClose={() => {
-            setSelectedTrip(null);
-            setSelectedVehicleId(null);
-          }}
-        />
-      )}
+
 
       {/* Railways Movement Creation Modal */}
       {isRailways && isMovementModalOpen && (
@@ -913,6 +1004,9 @@ export const Dashboard: React.FC = () => {
 
       {/* AI Assistant Widget */}
       <AiAssistantWidget />
+
+      {/* User Device Location Permission Guidance Modal */}
+      <UserLocationPermissionModal />
     </div>
   );
 };

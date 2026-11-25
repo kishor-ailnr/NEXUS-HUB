@@ -1,3 +1,5 @@
+import { OsrmRouteGeometry } from '../types';
+
 export type TruckType =
   | '32ft_mxl'
   | '20ft_container'
@@ -33,6 +35,28 @@ export type PredictionEventSeverity = 'low' | 'medium' | 'high' | 'critical';
 export type RerouteMode = 'fastest' | 'cheapest' | 'safest' | 'balanced';
 
 export type RestCompliance = 'compliant' | 'warning' | 'violation';
+
+export type PredictionProvenance = 'OBSERVED' | 'FORECAST' | 'MODEL_PREDICTION' | 'SCENARIO';
+
+export interface DataFreshnessRecord {
+  provider: string;
+  last_fetched: string;
+  status: 'live' | 'cached' | 'fallback_baseline';
+  staleness_seconds?: number;
+  details?: string;
+}
+
+export interface DataFreshnessSummary {
+  weather: DataFreshnessRecord;
+  traffic: DataFreshnessRecord;
+  toll: DataFreshnessRecord;
+  telemetry: DataFreshnessRecord;
+  model: {
+    version: string;
+    algorithm: string;
+    evaluation_mae_minutes?: number;
+  };
+}
 
 export interface MockFleet {
   id: string;
@@ -74,6 +98,7 @@ export interface MockRoute {
   planned_departure: string;
   planned_eta: string;
   highway_numbers: string[];
+  osrm_geometry?: OsrmRouteGeometry;
   is_mock: boolean;
   seed_batch_id: string;
   created_at: string;
@@ -136,6 +161,69 @@ export interface MockPredictionEvent {
   is_mock: boolean;
   seed_batch_id: string;
   created_at: string;
+  provenance?: PredictionProvenance;
+  evidence?: string;
+  recommended_action?: string;
+  uncertainty_range_minutes?: [number, number];
+  data_freshness?: DataFreshnessRecord;
+}
+
+export type RouteProblemCategory =
+  | 'traffic_congestion'
+  | 'highway_incident'
+  | 'road_closure'
+  | 'heavy_rain'
+  | 'fog_low_visibility'
+  | 'toll_delay'
+  | 'ghat_risk'
+  | 'breakdown';
+
+export interface RouteProblem {
+  id: string;
+  location_name: string;
+  latitude: number;
+  longitude: number;
+  category: RouteProblemCategory;
+  severity: PredictionEventSeverity;
+  status: PredictionProvenance;
+  expected_occurrence_time: string;
+  expected_delay_minutes: number;
+  data_source: string;
+  last_updated: string;
+  recommended_action: string;
+  evidence: string;
+}
+
+export interface RouteComparisonMetrics {
+  remaining_distance_km: number;
+  predicted_travel_time_minutes: number;
+  expected_eta: string;
+  traffic_delay_minutes: number;
+  weather_risk_score: number;
+  toll_cost_inr: number;
+  fuel_cost_inr: number;
+  total_operating_cost_inr: number;
+  route_risk_score: number;
+}
+
+export interface RouteFeasibilityExplanation {
+  why_current_route_problematic: string[];
+  why_alternate_better: string[];
+  why_feasible: {
+    road_accessibility: string;
+    vehicle_compatibility: string;
+    traffic_advantage: string;
+    weather_suitability: string;
+    time_feasibility: string;
+    operational_constraints: string;
+  };
+  feasibility_status: 'feasible' | 'warning' | 'infeasible';
+}
+
+export interface RouteWaypointPoint {
+  name?: string;
+  latitude: number;
+  longitude: number;
 }
 
 export interface MockReroute {
@@ -160,12 +248,48 @@ export interface MockReroute {
   is_mock: boolean;
   seed_batch_id: string;
   created_at: string;
+  // Enhanced dynamic rerouting attributes
+  original_metrics?: RouteComparisonMetrics;
+  alternate_metrics?: RouteComparisonMetrics;
+  problems?: RouteProblem[];
+  feasibility?: RouteFeasibilityExplanation;
+  divergence_point?: RouteWaypointPoint;
+  convergence_point?: RouteWaypointPoint;
+  destination_point?: RouteWaypointPoint;
+  travelled_waypoints?: [number, number][];
+  original_remaining_waypoints?: [number, number][];
+  alternate_waypoints?: [number, number][];
+  alternate_candidates?: AlternateCandidateRoute[];
+}
+
+export interface AlternateCandidateRoute {
+  id: string;
+  name: string;
+  corridor: string;
+  waypoints: [number, number][];
+  distance_km: number;
+  duration_minutes: number;
+  toll_cost_inr: number;
+  fuel_cost_inr: number;
+  risk_score: number;
+  is_recommended: boolean;
+  checkpoints?: {
+    name: string;
+    type: string;
+    latitude: number;
+    longitude: number;
+    sequence_order: number;
+    planned_arrival_minutes?: number;
+    status?: 'pending' | 'active' | 'passed';
+  }[];
 }
 
 export interface WhatIfParams {
   rain_severity_multiplier: number; // 1.0 - 3.0
   toll_strike_hours: number;        // 0 - 6
   breakdown_hours: number;          // 0 - 4
+  traffic_congestion_multiplier?: number; // 1.0 - 2.5
+  extra_rest_hours?: number;        // 0 - 6
 }
 
 export interface VehicleDigitalTwinData {
@@ -187,7 +311,31 @@ export interface VehicleDigitalTwinData {
   top_delay_causes: { cause: string; minutes: number }[];
   driver_fatigue_pct: number;
   active_reroute?: MockReroute | null;
+  preview_reroute?: MockReroute | null;
   what_if?: WhatIfParams;
+  data_freshness?: DataFreshnessSummary;
+  eta_breakdown?: {
+    base_travel_minutes: number;
+    traffic_delay_minutes: number;
+    weather_delay_minutes: number;
+    toll_delay_minutes: number;
+    mandatory_rest_minutes: number;
+    ghat_slowdown_minutes: number;
+    scenario_delay_minutes: number;
+  };
+  explanation?: {
+    summary: string;
+    primary_bottleneck: string;
+    mitigation: string;
+    on_time_verdict: string;
+  };
+  scenario_comparison?: {
+    baseline_eta: string;
+    scenario_eta: string;
+    eta_delta_minutes: number;
+    risk_delta: number;
+    additional_cost_inr: number;
+  };
 }
 
 export interface FleetTwinStatus {
@@ -228,6 +376,7 @@ export interface FleetTwinVehicleOverview {
     total_distance_km: number;
     planned_eta: string;
     waypoints?: [number, number][];
+    osrm_geometry?: OsrmRouteGeometry;
   };
   fleet_name?: string;
   current_checkpoint_name?: string;

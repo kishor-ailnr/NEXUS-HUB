@@ -3,9 +3,9 @@ import { FleetTwinController } from './fleet-twin.controller';
 import { FleetTwinService } from './fleet-twin.service';
 import { PredictionService } from './prediction/prediction.service';
 import { RerouteEngine } from './rerouting/reroute-engine';
-import { MockWeatherProvider } from './prediction/providers/weather.provider';
-import { MockTrafficProvider } from './prediction/providers/traffic.provider';
-import { MockTollProvider } from './prediction/providers/toll.provider';
+import { MockWeatherProvider, OpenMeteoWeatherProvider } from './prediction/providers/weather.provider';
+import { MockTrafficProvider, TomTomTrafficProvider } from './prediction/providers/traffic.provider';
+import { MockTollProvider, IndianHighwayTollProvider } from './prediction/providers/toll.provider';
 import { WEATHER_PROVIDER, TRAFFIC_PROVIDER, TOLL_PROVIDER } from './tokens';
 import { SupabaseModule } from '../supabase/supabase.module';
 
@@ -13,12 +13,15 @@ import { SupabaseModule } from '../supabase/supabase.module';
   imports: [SupabaseModule],
   controllers: [FleetTwinController],
   providers: [
-    { provide: WEATHER_PROVIDER, useClass: MockWeatherProvider },
-    { provide: TRAFFIC_PROVIDER, useClass: MockTrafficProvider },
-    { provide: TOLL_PROVIDER, useClass: MockTollProvider },
+    { provide: WEATHER_PROVIDER, useClass: OpenMeteoWeatherProvider },
+    { provide: TRAFFIC_PROVIDER, useClass: TomTomTrafficProvider },
+    { provide: TOLL_PROVIDER, useClass: IndianHighwayTollProvider },
     MockWeatherProvider,
+    OpenMeteoWeatherProvider,
     MockTrafficProvider,
+    TomTomTrafficProvider,
     MockTollProvider,
+    IndianHighwayTollProvider,
     PredictionService,
     RerouteEngine,
     FleetTwinService,

@@ -46,6 +46,8 @@ export class SpaFallbackFilter implements ExceptionFilter {
     '/voyages',
     '/voyage-movements',
     '/sea-convoys',
+    '/fleet-twin',
+    '/admin',
     '/socket.io',
   ];
 

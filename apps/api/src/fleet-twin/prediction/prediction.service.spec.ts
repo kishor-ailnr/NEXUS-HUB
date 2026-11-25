@@ -112,5 +112,47 @@ describe('PredictionService', () => {
     const restEvents = analysis.events.filter((e) => e.event_type === 'driver_break');
     expect(restEvents.length).toBeGreaterThan(0);
   });
+
+  it('should provide complete data freshness summary and provenance tags', async () => {
+    const analysis = await service.generate48hTimeline(
+      testVehicle,
+      testRoute,
+      testCheckpoints,
+      testDriver,
+      { rain_severity_multiplier: 1.0, toll_strike_hours: 0, breakdown_hours: 2.0 },
+      now,
+    );
+
+    expect(analysis.dataFreshness).toBeDefined();
+    expect(analysis.dataFreshness?.weather.provider).toBeDefined();
+    expect(analysis.dataFreshness?.traffic.provider).toBeDefined();
+    expect(analysis.dataFreshness?.toll.provider).toBeDefined();
+    expect(analysis.dataFreshness?.model.version).toContain('v2.4');
+
+    // Check provenances
+    const scenarioEvent = analysis.events.find((e) => e.provenance === 'SCENARIO');
+    expect(scenarioEvent).toBeDefined();
+
+    const forecastEvent = analysis.events.find((e) => e.provenance === 'FORECAST' || e.provenance === 'MODEL_PREDICTION');
+    expect(forecastEvent).toBeDefined();
+  });
+
+  it('should calculate traceable ETA breakdown without double-counting delays', async () => {
+    const analysis = await service.generate48hTimeline(
+      testVehicle,
+      testRoute,
+      testCheckpoints,
+      testDriver,
+      { rain_severity_multiplier: 1.5, toll_strike_hours: 1.0, breakdown_hours: 0 },
+      now,
+    );
+
+    expect(analysis.etaBreakdown).toBeDefined();
+    expect(analysis.etaBreakdown?.base_travel_minutes).toBeGreaterThan(0);
+    expect(analysis.etaBreakdown?.toll_delay_minutes).toBeGreaterThan(0);
+    expect(analysis.explanation).toBeDefined();
+    expect(analysis.explanation?.summary).toContain(testVehicle.registration_number);
+    expect(analysis.explanation?.on_time_verdict).toBeDefined();
+  });
 });
 
