@@ -24,9 +24,15 @@ import {
   ArrowUpRight,
   Navigation,
   Info,
+  History,
+  Square,
+  Archive,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { driversService } from '../services/drivers';
+import { tripsService } from '../services/trips';
+import { TripHistoryModal } from './TripHistoryModal';
 // FLEET-TWIN (mock) - removable
 import { useNavigate } from 'react-router-dom';
 import { fleetTwinApi } from '../features/fleet-twin/services/fleetTwinApi';
@@ -41,6 +47,8 @@ interface VehicleSidebarProps {
   onVehicleCreated: (vehicle: Vehicle) => void;
   onDriverCreated?: (driver: Driver) => void;
   onCreateTrip: (vehicle: Vehicle) => void;
+  onOpenDispatch?: () => void;
+  onTripCompleted?: () => void;
   currentUserRole?: string;
 }
 
@@ -53,11 +61,20 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
   onVehicleCreated,
   onDriverCreated,
   onCreateTrip,
+  onOpenDispatch,
+  onTripCompleted,
   currentUserRole,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [confirmEndTripVehicle, setConfirmEndTripVehicle] = useState<Vehicle | null>(null);
+  const [confirmArchiveVehicle, setConfirmArchiveVehicle] = useState<{
+    vehicle: Vehicle;
+    mode: 'archive' | 'retire';
+  } | null>(null);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
 
   // Add Driver Form State
   const [isAddDriverModalOpen, setIsAddDriverModalOpen] = useState(false);
@@ -174,31 +191,76 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
             </span>
           </div>
 
-          {/* Row 2: Add Driver + Add Vehicle Action Buttons */}
+          {/* Row 2: Add Driver + Add Vehicle + Dispatch Fleet + Trip History */}
           {isManager && (
-            <div className="grid grid-cols-2 gap-2 w-full pt-0.5">
-              <Button
-                size="sm"
-                onClick={() => setIsAddDriverModalOpen(true)}
-                className="w-full gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-semibold h-8 px-2.5 shadow-2xs transition-all cursor-pointer flex items-center justify-center truncate"
-                data-testid="add-driver-button"
-                title="Register a new driver"
-              >
-                <UserPlus className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">Add Driver</span>
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => setIsAddModalOpen(true)}
-                className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold h-8 px-2.5 shadow-2xs transition-all cursor-pointer flex items-center justify-center truncate"
-                data-testid="add-vehicle-button"
-                title="Register a new vehicle"
-              >
-                <Plus className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">Add Vehicle</span>
-              </Button>
+            <div className="space-y-1.5 w-full pt-0.5">
+              <div className="grid grid-cols-2 gap-2 w-full">
+                <Button
+                  size="sm"
+                  onClick={() => setIsAddDriverModalOpen(true)}
+                  className="w-full gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-semibold h-8 px-2.5 shadow-2xs transition-all cursor-pointer flex items-center justify-center truncate"
+                  data-testid="add-driver-button"
+                  title="Register a new driver"
+                >
+                  <UserPlus className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Add Driver</span>
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="w-full gap-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold h-8 px-2.5 shadow-2xs transition-all cursor-pointer flex items-center justify-center truncate"
+                  data-testid="add-vehicle-button"
+                  title="Register a new vehicle"
+                >
+                  <Plus className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Add Vehicle</span>
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 w-full">
+                <Button
+                  size="sm"
+                  onClick={() => (onOpenDispatch ? onOpenDispatch() : vehicles[0] && onCreateTrip(vehicles[0]))}
+                  className="w-full gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold h-8 px-2.5 shadow-2xs transition-all cursor-pointer flex items-center justify-center truncate"
+                  data-testid="dispatch-fleet-button"
+                  title="Dispatch a new fleet trip"
+                >
+                  <Navigation className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Dispatch Fleet</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsHistoryOpen(true)}
+                  className="w-full gap-1.5 border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold h-8 px-2.5 transition-all cursor-pointer flex items-center justify-center truncate"
+                  data-testid="trip-history-button"
+                  title="View completed trips and reports"
+                >
+                  <History className="w-3.5 h-3.5 shrink-0 text-blue-600" />
+                  <span className="truncate">Trip History</span>
+                </Button>
+              </div>
             </div>
           )}
+
+          {/* Resource Availability Summary */}
+          <div className="grid grid-cols-4 gap-1 text-center text-[10px] font-mono pt-1">
+            <div className="bg-emerald-50 border border-emerald-200 rounded py-1 text-emerald-800">
+              <div className="font-bold">{vehicles.filter((v) => v.status === 'idle' && !v.active_trip).length}</div>
+              <div>Avail Veh</div>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded py-1 text-blue-800">
+              <div className="font-bold">{vehicles.filter((v) => v.status === 'active' || Boolean(v.active_trip)).length}</div>
+              <div>Active</div>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded py-1 text-amber-800">
+              <div className="font-bold">{vehicles.filter((v) => v.status === 'maintenance').length}</div>
+              <div>Maint</div>
+            </div>
+            <div className="bg-slate-100 border border-slate-200 rounded py-1 text-slate-800">
+              <div className="font-bold">{drivers.filter((d) => d.status === 'available').length}</div>
+              <div>Avail Drv</div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-3.5 sm:p-4 pt-3 space-y-3 flex-1 min-h-0 flex flex-col overflow-hidden">
           {/* Search Box */}
@@ -387,8 +449,8 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
                       )}
                     </div>
 
-                    {/* Actions: Live Details, Inspect Twin, Start Trip */}
-                    <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-end gap-1.5">
+                    {/* Actions: Live Details, Inspect Twin, Start/End Trip, Delete/Archive */}
+                    <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-end gap-1.5">
                       <Button
                         size="sm"
                         variant="outline"
@@ -407,7 +469,7 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
                         <span>Live Details</span>
                       </Button>
 
-                      {isTwin ? (
+                      {isTwin && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -421,19 +483,52 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
                           <Eye className="w-3 h-3" />
                           <span>Inspect Twin</span>
                         </Button>
-                      ) : isManager && v.status === 'idle' ? (
+                      )}
+
+                      {isManager && v.active_trip && (v.active_trip.status === 'in_transit' || v.active_trip.status === 'planned') ? (
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onCreateTrip(v);
+                            setConfirmEndTripVehicle(v);
                           }}
-                          className="h-6 text-[10px] px-2 gap-1 text-blue-600 border-blue-200 hover:bg-blue-50"
+                          className="h-6 text-[10px] px-2 gap-1 text-rose-600 border-rose-200 hover:bg-rose-50 cursor-pointer"
                         >
-                          <Play className="w-2.5 h-2.5 fill-current" />
-                          <span>Start Trip</span>
+                          <Square className="w-2.5 h-2.5 fill-current" />
+                          <span>End Trip</span>
                         </Button>
+                      ) : isManager ? (
+                        <div className="flex items-center gap-1">
+                          {v.status === 'idle' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onCreateTrip(v);
+                              }}
+                              className="h-6 text-[10px] px-2 gap-1 text-blue-600 border-blue-200 hover:bg-blue-50 cursor-pointer"
+                            >
+                              <Play className="w-2.5 h-2.5 fill-current" />
+                              <span>Start Trip</span>
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            data-testid="delete-vehicle-button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmArchiveVehicle({ vehicle: v, mode: 'archive' });
+                            }}
+                            className="h-6 text-[10px] px-2 gap-1 text-rose-600 border-rose-200 hover:bg-rose-50 cursor-pointer"
+                            title="Delete, Archive, or Retire Vehicle"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Delete</span>
+                          </Button>
+                        </div>
                       ) : null}
                     </div>
                   </div>
@@ -443,6 +538,146 @@ export const VehicleSidebar: React.FC<VehicleSidebarProps> = ({
           </div>
         </CardContent>
       </Card>
+
+      {/* End Trip Confirmation Dialog */}
+      {confirmEndTripVehicle && confirmEndTripVehicle.active_trip && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4 bg-slate-900/50">
+          <div className="w-full max-w-sm bg-white rounded-xl border border-slate-300 shadow-2xl p-4 space-y-3">
+            <h3 className="text-sm font-bold text-slate-900">
+              End Active Trip for {confirmEndTripVehicle.registration_number}?
+            </h3>
+            <p className="text-xs text-slate-600">
+              This will mark the trip COMPLETED, generate a persisted completion report, and release the vehicle &amp; driver back to available status.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setConfirmEndTripVehicle(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={lifecycleBusy}
+                onClick={async () => {
+                  setLifecycleBusy(true);
+                  try {
+                    await tripsService.completeTrip(confirmEndTripVehicle.active_trip!.id);
+                    toast.success('Trip completed and report generated!');
+                    setConfirmEndTripVehicle(null);
+                    onTripCompleted?.();
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Failed to complete trip');
+                  } finally {
+                    setLifecycleBusy(false);
+                  }
+                }}
+                className="bg-rose-600 hover:bg-rose-700 text-white"
+              >
+                {lifecycleBusy ? 'Completing...' : 'Confirm End Trip'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive / Retire Vehicle Confirmation Dialog */}
+      {confirmArchiveVehicle && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4 bg-slate-900/50">
+          <div className="w-full max-w-sm bg-white rounded-xl border border-slate-300 shadow-2xl p-4 space-y-3">
+            <h3 className="text-sm font-bold text-slate-900">
+              Manage Vehicle: {confirmArchiveVehicle.vehicle.registration_number}
+            </h3>
+            <p className="text-xs text-slate-600">
+              Choose whether to archive (soft-remove from active registry) or retire this vehicle. Historical trip reports are always preserved.
+            </p>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setConfirmArchiveVehicle(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={lifecycleBusy}
+                onClick={async () => {
+                  setLifecycleBusy(true);
+                  try {
+                    await vehiclesService.retireVehicle(confirmArchiveVehicle.vehicle.id);
+                    toast.success('Vehicle marked as RETIRED');
+                    setConfirmArchiveVehicle(null);
+                    onTripCompleted?.();
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Failed to retire vehicle');
+                  } finally {
+                    setLifecycleBusy(false);
+                  }
+                }}
+                className="border-amber-300 text-amber-700 hover:bg-amber-50"
+              >
+                Retire Vehicle
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={lifecycleBusy}
+                onClick={async () => {
+                  setLifecycleBusy(true);
+                  try {
+                    await vehiclesService.archiveVehicle(confirmArchiveVehicle.vehicle.id);
+                    toast.success('Vehicle archived');
+                    setConfirmArchiveVehicle(null);
+                    onTripCompleted?.();
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Failed to archive vehicle');
+                  } finally {
+                    setLifecycleBusy(false);
+                  }
+                }}
+                className="border-slate-300 text-slate-700 hover:bg-slate-100"
+              >
+                <Archive className="w-3.5 h-3.5 mr-1" />
+                Archive
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={lifecycleBusy}
+                onClick={async () => {
+                  setLifecycleBusy(true);
+                  try {
+                    await vehiclesService.deleteVehicle(confirmArchiveVehicle.vehicle.id);
+                    toast.success(`Vehicle ${confirmArchiveVehicle.vehicle.registration_number} deleted`);
+                    setConfirmArchiveVehicle(null);
+                    onTripCompleted?.();
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Cannot permanently delete vehicle with trip history; use Archive instead');
+                  } finally {
+                    setLifecycleBusy(false);
+                  }
+                }}
+                className="bg-rose-600 hover:bg-rose-700 text-white"
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1" />
+                Delete Vehicle
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <TripHistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} />
 
       {/* Add Vehicle Modal */}
       {isAddModalOpen && (

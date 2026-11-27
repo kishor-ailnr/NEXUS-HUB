@@ -11,7 +11,7 @@ import {
   getOsrmCorridor,
   findOsrmCorridorByCities,
 } from '@nexus-ways/shared';
-import { FleetTwinOverview, FleetTwinVehicleOverview, TruckStatus } from '@nexus-ways/shared';
+import { FleetTwinOverview, FleetTwinVehicleOverview, TruckStatus, UnifiedTrafficTelemetry } from '@nexus-ways/shared';
 import { fleetTwinApi } from '../services/fleetTwinApi';
 
 export interface EnrichedRoadwaysVehicle extends Vehicle {
@@ -26,6 +26,7 @@ export interface EnrichedRoadwaysVehicle extends Vehicle {
   risk_score?: number;
   truck_type_label?: string;
   fleet_name?: string;
+  live_traffic?: UnifiedTrafficTelemetry;
 }
 
 export function formatTruckType(type: string): string {
@@ -320,6 +321,7 @@ export function useRoadwaysFleetOverview({
           risk_score: tv.risk_score,
           truck_type_label: truckLabel,
           fleet_name: tv.fleet_name,
+          live_traffic: tv.live_traffic,
         };
       },
     );

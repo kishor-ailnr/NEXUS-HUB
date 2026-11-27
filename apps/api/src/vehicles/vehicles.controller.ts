@@ -26,8 +26,35 @@ export class VehiclesController {
   async findAll(
     @CurrentUser() user: any,
     @Query('search') search?: string,
+    @Query('includeArchived') includeArchived?: string,
   ): Promise<Vehicle[]> {
-    return this.vehiclesService.findAll(user.orgId, search);
+    return this.vehiclesService.findAll(user.orgId, search, includeArchived === 'true');
+  }
+
+  @Get('available')
+  async findAvailable(
+    @CurrentUser() user: any,
+    @Query('cargoWeightKg') cargoWeightKg?: string,
+  ) {
+    const weight = cargoWeightKg ? Number(cargoWeightKg) : undefined;
+    return this.vehiclesService.getAvailableVehicles(user.orgId, weight);
+  }
+
+  @Get('availability')
+  async getAvailability(@CurrentUser() user: any) {
+    return this.vehiclesService.getResourceAvailability(user.orgId);
+  }
+
+  @Post(':id/archive')
+  @Roles('manager')
+  async archive(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.vehiclesService.archiveVehicle(user.orgId, id);
+  }
+
+  @Post(':id/retire')
+  @Roles('manager')
+  async retire(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.vehiclesService.retireVehicle(user.orgId, id);
   }
 
   @Get(':id')

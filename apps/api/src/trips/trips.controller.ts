@@ -18,6 +18,8 @@ import {
   SavedRoute,
   TripEtaResponse,
   TripReportUrlResponse,
+  DispatchPreviewRequest,
+  DispatchTripRequest,
 } from '@nexus-ways/shared';
 import { CreateTripDto, UpdateTripStatusDto, AddCheckpointDto } from './dto/trip.dto';
 
@@ -31,6 +33,37 @@ export class TripsController {
     return this.tripsService.findAll(user.orgId);
   }
 
+  @Get('history')
+  async getHistory(
+    @CurrentUser() user: any,
+    @Query('vehicleId') vehicleId?: string,
+    @Query('driverId') driverId?: string,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ): Promise<Trip[]> {
+    return this.tripsService.getTripHistory(user.orgId, { vehicleId, driverId, status, search, from, to });
+  }
+
+  @Post('preview-dispatch')
+  @Roles('manager')
+  async previewDispatch(
+    @CurrentUser() user: any,
+    @Body() body: DispatchPreviewRequest,
+  ) {
+    return this.tripsService.previewDispatch(user.orgId, body);
+  }
+
+  @Post('dispatch')
+  @Roles('manager')
+  async dispatchTrip(
+    @CurrentUser() user: any,
+    @Body() body: DispatchTripRequest,
+  ): Promise<Trip> {
+    return this.tripsService.dispatchTrip(user.orgId, body);
+  }
+
   @Get('saved-routes')
   async findSavedRoutes(
     @CurrentUser() user: any,
@@ -38,6 +71,24 @@ export class TripsController {
     @Query('destination') destination?: string,
   ): Promise<SavedRoute[]> {
     return this.tripsService.findSavedRoutes(user.orgId, origin, destination);
+  }
+
+  @Get(':id/completion-report')
+  async getCompletionReport(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+  ) {
+    return this.tripsService.getCompletionReport(user.orgId, id);
+  }
+
+  @Post(':id/complete')
+  @Roles('manager')
+  async completeTrip(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() body?: { note?: string },
+  ) {
+    return this.tripsService.completeTrip(user.orgId, id, body?.note);
   }
 
   @Get(':id/eta')

@@ -763,6 +763,67 @@ export const LiveFleetIntelligenceSidebar: React.FC<LiveFleetIntelligenceSidebar
               <Copy className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* Live Road Traffic (Unified TomTom Telemetry) */}
+          {(() => {
+            const traffic = (vehicle as any)?.live_traffic;
+            if (!traffic) {
+              return (
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/80 text-[11px] text-slate-500">
+                  Live traffic data temporarily unavailable
+                </div>
+              );
+            }
+            const isLive = traffic.provenance === 'LIVE_TOMTOM' || traffic.provenance === 'CACHED_TOMTOM';
+            const badgeCls =
+              traffic.congestion_level === 'gridlock' || traffic.congestion_level === 'heavy'
+                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                : traffic.congestion_level === 'moderate'
+                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+            return (
+              <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/80 space-y-1.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold uppercase text-slate-500 tracking-wider">
+                    Road Traffic ({traffic.provenance})
+                  </span>
+                  <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${badgeCls}`}>
+                    {traffic.congestion_level}
+                  </span>
+                </div>
+                <div className="text-[11px] font-medium text-slate-800 truncate">
+                  {traffic.road_segment || 'Highway Segment'}
+                  {traffic.road_closure && (
+                    <span className="ml-1.5 text-[10px] font-bold text-rose-600">• ROAD CLOSED</span>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 text-[11px] font-mono">
+                  <div>
+                    <span className="text-slate-400 text-[10px] block">Traffic</span>
+                    <span className="font-bold text-slate-900">{traffic.current_speed_kmh} km/h</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 text-[10px] block">Free-Flow</span>
+                    <span className="font-semibold text-slate-700">{traffic.free_flow_speed_kmh} km/h</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 text-[10px] block">Delay</span>
+                    <span className="font-semibold text-slate-800">
+                      {traffic.estimated_delay_minutes}m ({traffic.speed_reduction_pct}%↓)
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5 border-t border-slate-200/60">
+                  <span>
+                    {isLive ? traffic.data_source : `${traffic.data_source} (Fallback)`} • {traffic.confidence_pct}% conf
+                  </span>
+                  <span className="font-mono">
+                    {new Date(traffic.observed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* SECTION 3: CURRENT OPERATIONAL ACTIVITY (PART 4) */}

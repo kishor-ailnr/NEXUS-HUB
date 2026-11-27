@@ -360,6 +360,161 @@ export interface AddCheckpointDto {
   lng: number;
 }
 
+// ==========================================
+// Fleet Dispatch, Lifecycle & Completion Reports
+// ==========================================
+
+export type CargoType =
+  | 'general'
+  | 'perishable'
+  | 'hazardous'
+  | 'fragile'
+  | 'heavy_machinery'
+  | 'liquid_bulk';
+
+export type DispatchPriority = 'normal' | 'high' | 'urgent';
+
+export type RecommendedCheckpointType =
+  | 'toll_plaza'
+  | 'fuel_station'
+  | 'truck_parking'
+  | 'rest_area'
+  | 'warehouse'
+  | 'logistics_hub'
+  | 'service_station'
+  | 'emergency';
+
+export interface RecommendedCheckpoint {
+  id: string;
+  label: string;
+  type: RecommendedCheckpointType;
+  lat: number;
+  lng: number;
+  distanceFromPrevKm: number;
+  cumulativeDistanceKm: number;
+  plannedArrivalIso: string;
+  reason: string;
+}
+
+export interface DispatchPreviewRequest {
+  originAddress: string;
+  destinationAddress: string;
+  departureAt?: string;
+  checkpointCount?: number;
+  cargoType?: CargoType;
+  cargoWeightKg?: number;
+  vehicleId?: string;
+  driverId?: string;
+  simulationSpeedMultiplier?: number;
+}
+
+export interface DispatchPreviewResponse {
+  originLabel: string;
+  destinationLabel: string;
+  originCoords: { lat: number; lng: number };
+  destinationCoords: { lat: number; lng: number };
+  distanceKm: number;
+  durationMinutes: number;
+  plannedEtaIso: string;
+  predictedEtaIso: string;
+  tollEstimateInr: number;
+  riskScore: number;
+  weatherSummary: string;
+  trafficSummary: string;
+  routeGeometry: OsrmRouteGeometry;
+  recommendedCheckpoints: RecommendedCheckpoint[];
+  validationErrors: string[];
+}
+
+export interface DispatchTripRequest extends CreateTripDto {
+  cargoType?: CargoType;
+  cargoWeightKg?: number;
+  cargoDimensions?: string;
+  cargoDescription?: string;
+  priority?: DispatchPriority;
+  deliveryRequirements?: string;
+  departureAt?: string;
+  autoStart?: boolean;
+}
+
+export interface ResourceAvailabilitySummary {
+  availableVehicles: number;
+  activeVehicles: number;
+  maintenanceVehicles: number;
+  retiredVehicles: number;
+  availableDrivers: number;
+  onTripDrivers: number;
+  restingDrivers: number;
+  unavailableDrivers: number;
+}
+
+export interface EligibleDriverItem extends Driver {
+  eligible: boolean;
+  ineligibilityReason?: string;
+  dutyHoursToday?: number;
+}
+
+export interface EligibleVehicleItem extends Vehicle {
+  eligible: boolean;
+  ineligibilityReason?: string;
+  isRetired?: boolean;
+  isArchived?: boolean;
+}
+
+export interface TripCompletionReport {
+  tripId: string;
+  generatedAt: string;
+  tripSummary: {
+    tripId: string;
+    vehicleRegistration: string;
+    vehicleType: string;
+    driverName: string;
+    cargo: string;
+    source: string;
+    destination: string;
+    actualCompletionLocation: string;
+    departureTime: string;
+    arrivalTime: string;
+    totalDistanceKm: number | null;
+    totalDurationMinutes: number | null;
+    deliveryStatus: 'ON_TIME' | 'DELAYED' | 'COMPLETED';
+  };
+  predictionAccuracy: {
+    originalPlannedEta: string;
+    lastPredictedEta: string;
+    actualArrival: string;
+    errorMinutes: number | null;
+    accuracyPct: number | null;
+  };
+  operationalPerformance: {
+    checkpointsCompleted: number;
+    checkpointsTotal: number;
+    checkpointsMissed: number;
+    totalStopDurationMinutes: number | null;
+    tollDelayMinutes: number | null;
+    restDurationMinutes: number | null;
+    routeDeviationsCount: number;
+  };
+  delayAndRiskAnalysis: {
+    trafficDelays: string;
+    weatherDelays: string;
+    tollDelays: string;
+    driverRest: string;
+    mechanicalIncidents: string;
+  };
+  alertSummary: {
+    alertsGenerated: number;
+    alertsAcknowledged: number;
+    alertsResolved: number;
+    highestSeverity: string;
+  };
+  routeComparison: {
+    plannedDistanceKm: number | null;
+    actualDistanceKm: number | null;
+    deviationSummary: string;
+  };
+}
+
 export interface GPSPoint {
   id: string;
   trip_id: string;
@@ -468,6 +623,8 @@ export interface AiChatMessage {
   toolCalls?: AiToolCall[];
   proposedAction?: AiProposedAction | null;
   isFallback?: boolean;
+  fallbackReason?: string;
+  detectedLanguage?: string;
   createdAt: string;
 }
 
@@ -481,6 +638,98 @@ export interface AiConfirmActionRequest {
   actionType: 'acknowledge_alert';
   payload: any;
   confirmed: boolean;
+}
+
+// ==========================================
+// Intelligent Priority-Based Alert Management
+// ==========================================
+
+export type AlertPriorityLevel = 'P1' | 'P2' | 'P3' | 'P4';
+export type AlertPriorityLabel = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+export type AlertLifecycleState =
+  | 'NEW'
+  | 'ACKNOWLEDGED'
+  | 'ACTION_IN_PROGRESS'
+  | 'RESOLVED'
+  | 'DISMISSED';
+
+export type AlertCategory =
+  | 'weather'
+  | 'traffic'
+  | 'toll'
+  | 'hos'
+  | 'mechanical'
+  | 'eta'
+  | 'geofence'
+  | 'operational';
+
+export interface AlertActionHistoryEntry {
+  action: string;
+  actorId?: string;
+  actorName?: string;
+  note?: string;
+  timestamp: string;
+}
+
+export interface PrioritizedAlertItem {
+  id: string;
+  fingerprint: string;
+  source: 'db_alert' | 'fleet_twin' | 'live_traffic';
+  priority: AlertPriorityLevel;
+  priorityLabel: AlertPriorityLabel;
+  isSafetyCritical: boolean;
+  priorityScore: number;
+  scoreBreakdown: {
+    severity: number;
+    urgency: number;
+    safety: number;
+    operationalImpact: number;
+    deliveryImpact: number;
+    escalationRisk: number;
+    confidence: number;
+  };
+  state: AlertLifecycleState;
+  category: AlertCategory;
+  title: string;
+  description: string;
+  evidence: string;
+  rootCause: string;
+  predictedImpact: string;
+  recommendedAction: string;
+  vehicleId?: string;
+  vehicleRegistration?: string;
+  driverName?: string;
+  location?: string;
+  coordinates?: { lat: number; lng: number };
+  detectedAt: string;
+  timeToImpactMinutes?: number | null;
+  estimatedDelayMinutes?: number;
+  affectedVehiclesCount: number;
+  dataSource: string;
+  dataFreshness: string;
+  confidencePct: number;
+  assignedTo?: string;
+  resolutionNotes?: string;
+  acknowledgedAt?: string;
+  resolvedAt?: string;
+  actionHistory: AlertActionHistoryEntry[];
+}
+
+export interface PrioritizedAlertsSummary {
+  totalActive: number;
+  criticalCount: number;
+  highCount: number;
+  mediumCount: number;
+  lowCount: number;
+  resolvedCount: number;
+  unacknowledgedCount: number;
+  highestPriorityAlert: PrioritizedAlertItem | null;
+}
+
+export interface AlertLifecycleUpdateRequest {
+  action: 'acknowledge' | 'in_progress' | 'resolve' | 'dismiss' | 'assign';
+  note?: string;
+  assignedTo?: string;
 }
 
 // ==========================================

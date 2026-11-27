@@ -300,7 +300,11 @@ export const VehicleDigitalTwinPage: React.FC = () => {
           </div>
           <div className="flex items-center gap-1.5 text-slate-400">
             <span>Traffic:</span>
-            <span className="text-slate-200 font-medium">TomTom / Corridor Baseline</span>
+            <span className="text-slate-200 font-medium">
+              {twinData.live_traffic
+                ? `${twinData.live_traffic.data_source} (${twinData.live_traffic.provenance}) • ${twinData.live_traffic.current_speed_kmh}/${twinData.live_traffic.free_flow_speed_kmh} km/h (${twinData.live_traffic.congestion_level}, ${twinData.live_traffic.confidence_pct}% conf)`
+                : 'Live traffic data temporarily unavailable'}
+            </span>
           </div>
           <div className="flex items-center gap-1.5 text-slate-400">
             <span>Toll Queue:</span>

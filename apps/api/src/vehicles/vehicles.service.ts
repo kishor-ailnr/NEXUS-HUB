@@ -6,15 +6,25 @@ import {
   Logger,
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
-import { CreateVehicleDto, UpdateVehicleDto, Vehicle } from '@nexus-ways/shared';
+import { CreateVehicleDto, UpdateVehicleDto, Vehicle, EligibleVehicleItem, ResourceAvailabilitySummary } from '@nexus-ways/shared';
 
 @Injectable()
 export class VehiclesService {
   private readonly logger = new Logger(VehiclesService.name);
+  private readonly archivedVehicleIds = new Set<string>();
+  private readonly retiredVehicleIds = new Set<string>();
 
   constructor(private readonly supabase: SupabaseService) {}
 
-  async findAll(orgId: string, search?: string): Promise<Vehicle[]> {
+  isVehicleArchived(id: string): boolean {
+    return this.archivedVehicleIds.has(id);
+  }
+
+  isVehicleRetired(id: string): boolean {
+    return this.retiredVehicleIds.has(id);
+  }
+
+  async findAll(orgId: string, search?: string, includeArchived = false): Promise<Vehicle[]> {
     let query = this.supabase.adminClient
       .from('vehicles')
       .select(`
@@ -89,16 +99,18 @@ export class VehiclesService {
       }
     }
 
-    return vehicles.map((v) => {
-      const convoy = convoyByVehicle.get(v.id);
-      return {
-        ...v,
-        latest_gps: latestGpsByVehicle.get(v.id) || null,
-        active_trip: activeTripByVehicle.get(v.id) || null,
-        convoy_id: convoy?.id || null,
-        convoy_name: convoy?.name || null,
-      };
-    });
+    return vehicles
+      .filter((v) => includeArchived || !this.archivedVehicleIds.has(v.id))
+      .map((v) => {
+        const convoy = convoyByVehicle.get(v.id);
+        return {
+          ...v,
+          latest_gps: latestGpsByVehicle.get(v.id) || null,
+          active_trip: activeTripByVehicle.get(v.id) || null,
+          convoy_id: convoy?.id || null,
+          convoy_name: convoy?.name || null,
+        };
+      });
   }
 
   async findOne(orgId: string, id: string): Promise<Vehicle> {
@@ -249,5 +261,113 @@ export class VehiclesService {
     }
 
     return { success: true };
+  }
+
+  async getAvailableVehicles(orgId: string, cargoWeightKg?: number): Promise<EligibleVehicleItem[]> {
+    const vehicles = await this.findAll(orgId, undefined, false);
+    return vehicles.map((v) => {
+      const isRetired = this.retiredVehicleIds.has(v.id);
+      const isArchived = this.archivedVehicleIds.has(v.id);
+      const hasActiveTrip = Boolean(v.active_trip);
+      let eligible = true;
+      let ineligibilityReason: string | undefined;
+
+      if (isArchived) {
+        eligible = false;
+        ineligibilityReason = 'Vehicle is archived';
+      } else if (isRetired) {
+        eligible = false;
+        ineligibilityReason = 'Vehicle is retired';
+      } else if (v.status === 'maintenance') {
+        eligible = false;
+        ineligibilityReason = 'Vehicle is under maintenance';
+      } else if (v.status === 'active' || hasActiveTrip) {
+        eligible = false;
+        ineligibilityReason = 'Vehicle is currently assigned to an active trip';
+      } else if (cargoWeightKg && v.capacity_kg && v.capacity_kg < cargoWeightKg) {
+        eligible = false;
+        ineligibilityReason = `Capacity (${v.capacity_kg} kg) is below cargo weight (${cargoWeightKg} kg)`;
+      }
+
+      return {
+        ...v,
+        eligible,
+        ineligibilityReason,
+        isRetired,
+        isArchived,
+      };
+    });
+  }
+
+  async getResourceAvailability(orgId: string): Promise<ResourceAvailabilitySummary> {
+    const vehicles = await this.findAll(orgId, undefined, false);
+    const { data: drivers } = await this.supabase.adminClient
+      .from('drivers')
+      .select('id, status')
+      .eq('org_id', orgId);
+
+    const retiredVehicles = vehicles.filter((v) => this.retiredVehicleIds.has(v.id)).length;
+    const maintenanceVehicles = vehicles.filter(
+      (v) => !this.retiredVehicleIds.has(v.id) && v.status === 'maintenance',
+    ).length;
+    const activeVehicles = vehicles.filter(
+      (v) => !this.retiredVehicleIds.has(v.id) && (v.status === 'active' || Boolean(v.active_trip)),
+    ).length;
+    const availableVehicles = Math.max(
+      0,
+      vehicles.length - retiredVehicles - maintenanceVehicles - activeVehicles,
+    );
+
+    const driverList = drivers || [];
+    const availableDrivers = driverList.filter((d: any) => d.status === 'available').length;
+    const onTripDrivers = driverList.filter((d: any) => d.status === 'on_trip').length;
+    const restingDrivers = driverList.filter((d: any) => d.status === 'off_duty').length;
+    const unavailableDrivers = Math.max(
+      0,
+      driverList.length - availableDrivers - onTripDrivers - restingDrivers,
+    );
+
+    return {
+      availableVehicles,
+      activeVehicles,
+      maintenanceVehicles,
+      retiredVehicles,
+      availableDrivers,
+      onTripDrivers,
+      restingDrivers,
+      unavailableDrivers,
+    };
+  }
+
+  async archiveVehicle(orgId: string, id: string): Promise<{ success: boolean; archived: boolean }> {
+    const v = await this.findOne(orgId, id);
+    const { data: activeTrips } = await this.supabase.adminClient
+      .from('trips')
+      .select('id, status')
+      .eq('vehicle_id', id)
+      .in('status', ['in_transit', 'planned']);
+
+    if (activeTrips && activeTrips.length > 0) {
+      throw new BadRequestException('Cannot archive a vehicle assigned to an active or planned trip');
+    }
+
+    this.archivedVehicleIds.add(v.id);
+    return { success: true, archived: true };
+  }
+
+  async retireVehicle(orgId: string, id: string): Promise<Vehicle> {
+    const v = await this.findOne(orgId, id);
+    const { data: activeTrips } = await this.supabase.adminClient
+      .from('trips')
+      .select('id, status')
+      .eq('vehicle_id', id)
+      .in('status', ['in_transit', 'planned']);
+
+    if (activeTrips && activeTrips.length > 0) {
+      throw new BadRequestException('Cannot retire a vehicle assigned to an active or planned trip');
+    }
+
+    this.retiredVehicleIds.add(v.id);
+    return this.update(orgId, id, { status: 'maintenance' });
   }
 }

@@ -292,6 +292,50 @@ export interface WhatIfParams {
   extra_rest_hours?: number;        // 0 - 6
 }
 
+export type TrafficProvenance =
+  | 'LIVE_TOMTOM'
+  | 'CACHED_TOMTOM'
+  | 'HISTORICAL_MODEL'
+  | 'BASELINE_FALLBACK'
+  | 'UNAVAILABLE';
+
+export interface UnifiedTrafficTelemetry {
+  vehicle_id?: string;
+  lat: number;
+  lng: number;
+  road_segment?: string;
+  functional_road_class?: string;
+  current_speed_kmh: number;
+  free_flow_speed_kmh: number;
+  congestion_level: 'low' | 'moderate' | 'heavy' | 'gridlock';
+  speed_reduction_pct: number;
+  estimated_delay_minutes: number;
+  road_closure: boolean;
+  confidence_pct: number;
+  data_source: string;
+  provenance: TrafficProvenance;
+  observed_at: string;
+  stale_after?: string;
+  provider_status: 'CONNECTED' | 'DEGRADED' | 'FAILED';
+  error_message?: string;
+}
+
+export interface TrafficProviderDiagnostics {
+  provider: string;
+  status: 'CONNECTED' | 'DEGRADED' | 'FAILED';
+  api_key_configured: boolean;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  last_http_status: number | null;
+  error_category: string | null;
+  response_latency_ms: number | null;
+  data_freshness: TrafficProvenance;
+  success_count: number;
+  failure_count: number;
+  cache_size: number;
+  cache_ttl_seconds: number;
+}
+
 export interface VehicleDigitalTwinData {
   vehicle: MockVehicle;
   driver: MockDriver;
@@ -314,6 +358,7 @@ export interface VehicleDigitalTwinData {
   preview_reroute?: MockReroute | null;
   what_if?: WhatIfParams;
   data_freshness?: DataFreshnessSummary;
+  live_traffic?: UnifiedTrafficTelemetry;
   eta_breakdown?: {
     base_travel_minutes: number;
     traffic_delay_minutes: number;
@@ -385,6 +430,7 @@ export interface FleetTwinVehicleOverview {
   predicted_eta?: string;
   total_predicted_delay_minutes?: number;
   risk_score?: number;
+  live_traffic?: UnifiedTrafficTelemetry;
   is_twin: boolean;
 }
 
@@ -392,6 +438,7 @@ export interface FleetTwinOverview {
   enabled: boolean;
   timestamp: string;
   simulated_clock: string;
+  traffic_diagnostics?: TrafficProviderDiagnostics;
   totals: {
     active_vehicles: number;
     total_fleet: number;

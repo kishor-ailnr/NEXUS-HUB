@@ -25,6 +25,11 @@ export class DriversController {
     return this.driversService.findAll(user.orgId);
   }
 
+  @Get('eligible')
+  async getEligible(@CurrentUser() user: any) {
+    return this.driversService.getEligibleDrivers(user.orgId);
+  }
+
   @Get(':id/behavior-history')
   async getBehaviorHistory(
     @CurrentUser() user: any,

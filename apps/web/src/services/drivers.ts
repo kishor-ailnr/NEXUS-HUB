@@ -1,9 +1,19 @@
-import { Driver, CreateDriverDto, UpdateDriverDto, DriverBehaviorScore } from '@nexus-ways/shared';
+import {
+  Driver,
+  CreateDriverDto,
+  UpdateDriverDto,
+  DriverBehaviorScore,
+  EligibleDriverItem,
+} from '@nexus-ways/shared';
 import { apiFetch } from '../lib/api';
 
 export const driversService = {
   async getDrivers(): Promise<Driver[]> {
     return apiFetch<Driver[]>('/drivers', { method: 'GET' });
+  },
+
+  async getEligibleDrivers(): Promise<EligibleDriverItem[]> {
+    return apiFetch<EligibleDriverItem[]>('/drivers/eligible', { method: 'GET' });
   },
 
   async getDriver(id: string): Promise<Driver> {

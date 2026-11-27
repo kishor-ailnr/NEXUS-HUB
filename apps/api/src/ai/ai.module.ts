@@ -7,6 +7,7 @@ import { TripsModule } from '../trips/trips.module';
 import { RailwaysModule } from '../railways/railways.module';
 import { AirwaysModule } from '../airways/airways.module';
 import { SeawaysModule } from '../seaways/seaways.module';
+import { FleetTwinModule } from '../fleet-twin/fleet-twin.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { SeawaysModule } from '../seaways/seaways.module';
     RailwaysModule,
     AirwaysModule,
     SeawaysModule,
+    FleetTwinModule,
   ],
   controllers: [AiController],
   providers: [AiService],

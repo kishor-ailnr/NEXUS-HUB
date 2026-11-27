@@ -34,6 +34,16 @@ export class FleetTwinController {
     return this.fleetTwinService.getStatus();
   }
 
+  @Get('traffic/health')
+  async getTrafficHealth(
+    @Query('lat') lat?: string,
+    @Query('lng') lng?: string,
+  ) {
+    const parsedLat = lat !== undefined ? Number(lat) : undefined;
+    const parsedLng = lng !== undefined ? Number(lng) : undefined;
+    return this.fleetTwinService.getTrafficDiagnostics(parsedLat, parsedLng);
+  }
+
   @Get('overview')
   async getOverview() {
     this.checkEnabled();

@@ -15,7 +15,7 @@ export class AiController {
     @CurrentUser() user: any,
     @Body() req: AiChatRequest,
   ): Promise<AiChatMessage> {
-    return this.aiService.processChat(user.orgId, req);
+    return this.aiService.processChat(user.orgId, user.id, user.role, req);
   }
 
   @Post('action/confirm')
@@ -23,6 +23,6 @@ export class AiController {
     @CurrentUser() user: any,
     @Body() req: AiConfirmActionRequest,
   ): Promise<{ success: boolean; message: string }> {
-    return this.aiService.confirmAction(user.orgId, req);
+    return this.aiService.confirmAction(user.orgId, req, user.role, user.id);
   }
 }

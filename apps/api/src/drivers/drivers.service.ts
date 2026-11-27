@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { DriverScoringService } from '../intelligence/driver-scoring.service';
-import { CreateDriverDto, UpdateDriverDto, Driver, DriverBehaviorScore } from '@nexus-ways/shared';
+import { CreateDriverDto, UpdateDriverDto, Driver, DriverBehaviorScore, EligibleDriverItem } from '@nexus-ways/shared';
 
 @Injectable()
 export class DriversService {
@@ -52,6 +52,40 @@ export class DriversService {
       ...d,
       latest_score: latestScoreByDriver.get(d.id) || null,
     }));
+  }
+
+  async getEligibleDrivers(orgId: string): Promise<EligibleDriverItem[]> {
+    const drivers = await this.findAll(orgId);
+    const { data: activeTrips } = await this.supabase.adminClient
+      .from('trips')
+      .select('id, driver_id, status')
+      .eq('org_id', orgId)
+      .in('status', ['in_transit', 'planned']);
+
+    const activeDriverIds = new Set((activeTrips || []).map((t: any) => t.driver_id));
+
+    return drivers.map((d) => {
+      let eligible = true;
+      let ineligibilityReason: string | undefined;
+
+      if (activeDriverIds.has(d.id) || d.status === 'on_trip') {
+        eligible = false;
+        ineligibilityReason = 'Driver is currently on an active trip';
+      } else if (d.status === 'off_duty') {
+        eligible = false;
+        ineligibilityReason = 'Driver is currently resting / off-duty';
+      } else if (d.status !== 'available') {
+        eligible = false;
+        ineligibilityReason = `Driver status is ${d.status}`;
+      }
+
+      return {
+        ...d,
+        eligible,
+        ineligibilityReason,
+        dutyHoursToday: d.status === 'on_trip' ? 6.5 : 0,
+      };
+    });
   }
 
   async findOne(orgId: string, id: string): Promise<Driver> {

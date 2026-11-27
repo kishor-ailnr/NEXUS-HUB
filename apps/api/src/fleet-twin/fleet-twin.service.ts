@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional, Inject } from '@nestjs/common';
 import {
   MockFleet,
   MockDriver,
@@ -12,12 +12,16 @@ import {
   FleetTwinStatus,
   FleetTwinOverview,
   FleetTwinVehicleOverview,
+  UnifiedTrafficTelemetry,
+  TrafficProviderDiagnostics,
   DEFAULT_WHAT_IF_PARAMS,
   getOsrmCorridor,
 } from '@nexus-ways/shared';
 import { SupabaseService } from '../supabase/supabase.service';
 import { PredictionService } from './prediction/prediction.service';
 import { RerouteEngine } from './rerouting/reroute-engine';
+import { TrafficProvider, TomTomTrafficProvider } from './prediction/providers/traffic.provider';
+import { TRAFFIC_PROVIDER } from './tokens';
 import {
   MOCK_FLEETS_DATA,
   MOCK_DRIVERS_DATA,
@@ -46,6 +50,42 @@ export class FleetTwinService {
   private digitalTwinCache: Map<string, { data: VehicleDigitalTwinData; expiresAt: number }> = new Map();
   private allVehiclesCache: { data: MockVehicle[]; expiresAt: number } | null = null;
   private overviewCache: { data: FleetTwinOverview; expiresAt: number } | null = null;
+  private acknowledgedTwinAlerts: Map<
+    string,
+    { alertId: string; vehicleId?: string; eventType?: string; acknowledgedAt: string; acknowledgedBy?: string; reason?: string }
+  > = new Map();
+
+  /**
+   * Acknowledge a Digital Twin prediction alert (in-memory operational state + cache invalidation).
+   */
+  acknowledgeTwinAlert(
+    alertId: string,
+    meta: { vehicleId?: string; eventType?: string; acknowledgedBy?: string; reason?: string } = {},
+  ) {
+    const acknowledgedAt = new Date().toISOString();
+    const record = {
+      alertId,
+      vehicleId: meta.vehicleId,
+      eventType: meta.eventType,
+      acknowledgedAt,
+      acknowledgedBy: meta.acknowledgedBy,
+      reason: meta.reason,
+    };
+    this.acknowledgedTwinAlerts.set(alertId, record);
+    if (meta.vehicleId && meta.eventType) {
+      this.acknowledgedTwinAlerts.set(`${meta.vehicleId}:${meta.eventType}`, record);
+    }
+    this.overviewCache = null;
+    return record;
+  }
+
+  isTwinAlertAcknowledged(alertId: string, vehicleId?: string, eventType?: string): boolean {
+    if (this.acknowledgedTwinAlerts.has(alertId)) return true;
+    if (vehicleId && eventType && this.acknowledgedTwinAlerts.has(`${vehicleId}:${eventType}`)) {
+      return true;
+    }
+    return false;
+  }
 
   private invalidateTwinCache(vehicleId?: string) {
     if (vehicleId) {
@@ -65,9 +105,51 @@ export class FleetTwinService {
     @Optional() private readonly supabaseService: SupabaseService,
     private readonly predictionService: PredictionService,
     @Optional() private readonly rerouteEngineInjected?: RerouteEngine,
+    @Optional() @Inject(TRAFFIC_PROVIDER) private readonly trafficProvider?: TrafficProvider,
   ) {
     this.rerouteEngine = rerouteEngineInjected || new RerouteEngine();
     this.initializeInMemory();
+  }
+
+  /**
+   * Diagnostic health check for the TomTom Traffic Provider (with optional live coordinate probe).
+   */
+  async getTrafficDiagnostics(
+    probeLat?: number,
+    probeLng?: number,
+  ): Promise<TrafficProviderDiagnostics & { probe?: UnifiedTrafficTelemetry }> {
+    const provider = this.trafficProvider || new TomTomTrafficProvider();
+    let probe: UnifiedTrafficTelemetry | undefined;
+
+    if (
+      probeLat !== undefined &&
+      probeLng !== undefined &&
+      Number.isFinite(probeLat) &&
+      Number.isFinite(probeLng) &&
+      provider.getNormalizedTraffic
+    ) {
+      probe = await provider.getNormalizedTraffic('diagnostic-probe', probeLat, probeLng, false, 1.0);
+    }
+
+    const diag: TrafficProviderDiagnostics = provider.getDiagnostics
+      ? provider.getDiagnostics()
+      : {
+          provider: 'Traffic Provider',
+          status: 'DEGRADED',
+          api_key_configured: Boolean(process.env.TOMTOM_API_KEY),
+          last_success_at: null,
+          last_failure_at: null,
+          last_http_status: null,
+          error_category: null,
+          response_latency_ms: null,
+          data_freshness: 'BASELINE_FALLBACK',
+          success_count: 0,
+          failure_count: 0,
+          cache_size: 0,
+          cache_ttl_seconds: 120,
+        };
+
+    return probe ? { ...diag, probe } : diag;
   }
 
   private initializeInMemory() {
@@ -180,6 +262,9 @@ export class FleetTwinService {
 
           for (const ev of analysis.events) {
             if ((ev.severity === 'high' || ev.severity === 'critical') && ev.hours_from_now <= 6) {
+              if (this.isTwinAlertAcknowledged(`twin-alert-${v.id}-${highAlerts.length}`, v.id, ev.event_type)) {
+                continue;
+              }
               highAlerts.push({
                 vehicle_id: v.id,
                 registration_number: v.registration_number,
@@ -213,6 +298,22 @@ export class FleetTwinService {
       }
       if (v.progress_pct >= 90) {
         arrivedCount++;
+      }
+
+      // Fetch unified live traffic for this vehicle's current GPS coordinate
+      let liveTraffic: UnifiedTrafficTelemetry | undefined;
+      if (this.trafficProvider?.getNormalizedTraffic) {
+        try {
+          liveTraffic = await this.trafficProvider.getNormalizedTraffic(
+            v.id,
+            v.current_lat,
+            v.current_lng,
+            false,
+            1.0,
+          );
+        } catch (err) {
+          this.logger.debug(`Live traffic fetch failed for ${v.id}: ${err}`);
+        }
       }
 
       overviewVehicles.push({
@@ -257,6 +358,7 @@ export class FleetTwinService {
         predicted_eta: predictedEta,
         total_predicted_delay_minutes: totalDelay,
         risk_score: riskScore,
+        live_traffic: liveTraffic,
         is_twin: true,
       });
     }
@@ -268,6 +370,7 @@ export class FleetTwinService {
       enabled: true,
       timestamp: simulatedClock,
       simulated_clock: simulatedClock,
+      traffic_diagnostics: this.trafficProvider?.getDiagnostics?.(),
       totals: {
         active_vehicles: activeVehiclesCount,
         total_fleet: rawVehicles.length,
@@ -472,6 +575,22 @@ export class FleetTwinService {
       }
     }
 
+    // Fetch unified live traffic observation at vehicle's current coordinates
+    let liveTraffic: UnifiedTrafficTelemetry | undefined;
+    if (this.trafficProvider?.getNormalizedTraffic) {
+      try {
+        liveTraffic = await this.trafficProvider.getNormalizedTraffic(
+          vehicle.id,
+          vehicle.current_lat,
+          vehicle.current_lng,
+          false,
+          whatIf.traffic_congestion_multiplier || 1.0,
+        );
+      } catch (err) {
+        this.logger.debug(`Live traffic fetch failed for twin ${vehicle.id}: ${err}`);
+      }
+    }
+
     const result: VehicleDigitalTwinData = {
       vehicle,
       driver,
@@ -494,6 +613,7 @@ export class FleetTwinService {
       preview_reroute: activeReroute && !activeReroute.accepted ? activeReroute : undefined,
       what_if: whatIf,
       data_freshness: analysis.dataFreshness,
+      live_traffic: liveTraffic,
       eta_breakdown: analysis.etaBreakdown,
       explanation: analysis.explanation,
       scenario_comparison: scenarioComparison,

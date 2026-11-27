@@ -4,12 +4,62 @@ import {
   AddCheckpointDto,
   SavedRoute,
   TripEtaResponse,
+  DispatchPreviewRequest,
+  DispatchPreviewResponse,
+  DispatchTripRequest,
+  TripCompletionReport,
 } from '@nexus-ways/shared';
 import { apiFetch } from '../lib/api';
 
 export const tripsService = {
   async getTrips(): Promise<Trip[]> {
     return apiFetch<Trip[]>('/trips', { method: 'GET' });
+  },
+
+  async previewDispatch(req: DispatchPreviewRequest): Promise<DispatchPreviewResponse> {
+    return apiFetch<DispatchPreviewResponse>('/trips/preview-dispatch', {
+      method: 'POST',
+      data: req,
+    });
+  },
+
+  async dispatchTrip(req: DispatchTripRequest): Promise<Trip> {
+    return apiFetch<Trip>('/trips/dispatch', {
+      method: 'POST',
+      data: req,
+    });
+  },
+
+  async completeTrip(tripId: string, note?: string): Promise<{ trip: Trip; report: TripCompletionReport }> {
+    return apiFetch<{ trip: Trip; report: TripCompletionReport }>(`/trips/${tripId}/complete`, {
+      method: 'POST',
+      data: { note },
+    });
+  },
+
+  async getCompletionReport(tripId: string): Promise<TripCompletionReport> {
+    return apiFetch<TripCompletionReport>(`/trips/${tripId}/completion-report`, {
+      method: 'GET',
+    });
+  },
+
+  async getTripHistory(filters?: {
+    vehicleId?: string;
+    driverId?: string;
+    status?: string;
+    search?: string;
+    from?: string;
+    to?: string;
+  }): Promise<Trip[]> {
+    const params = new URLSearchParams();
+    if (filters?.vehicleId) params.append('vehicleId', filters.vehicleId);
+    if (filters?.driverId) params.append('driverId', filters.driverId);
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.from) params.append('from', filters.from);
+    if (filters?.to) params.append('to', filters.to);
+    const q = params.toString();
+    return apiFetch<Trip[]>(q ? `/trips/history?${q}` : '/trips/history', { method: 'GET' });
   },
 
   async getTrip(id: string): Promise<Trip> {

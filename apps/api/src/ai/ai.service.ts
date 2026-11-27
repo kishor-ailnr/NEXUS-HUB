@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI, Type, FunctionDeclaration } from '@google/genai';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -7,6 +7,7 @@ import { TripsService } from '../trips/trips.service';
 import { TrainMovementsService } from '../railways/movements/train-movements.service';
 import { FlightMovementsService } from '../airways/movements/flight-movements.service';
 import { VoyageMovementsService } from '../seaways/movements/voyage-movements.service';
+import { FleetTwinService } from '../fleet-twin/fleet-twin.service';
 import {
   AiChatMessage,
   AiChatRequest,
@@ -15,33 +16,81 @@ import {
   AiProposedAction,
 } from '@nexus-ways/shared';
 
-const NEXUS_SYSTEM_INSTRUCTION = `You are the NEXUS WAYS Multimodal Logistics Operations Assistant.
+// ---------------------------------------------------------------------------
+// SYSTEM INSTRUCTION
+// ---------------------------------------------------------------------------
+const NEXUS_SYSTEM_INSTRUCTION = `You are the NEXUS WAYS Multimodal Logistics Operations Copilot — an intelligent, role-aware, multilingual AI analyst.
 
 NEXUS WAYS is an enterprise Multimodal Logistics Intelligence Platform covering:
-1. Roadways (live fleet simulation, OSRM routing, geofences, HOS/duty tracking, convoys, telemetry)
+1. Roadways (live fleet simulation, OSRM routing, geofences, HOS/duty tracking, convoys, telemetry, Digital Twin)
 2. Railways (freight rakes, yard tracking, block section operations, Overpass rail routing, slot intelligence, digital twin ghost tracking, crew scoring, GLEC rail carbon)
 3. Airways (air cargo manifests, flight movements, Great-Circle direct spherical routing, airport runway/apron slot intelligence, DGCA FDTL compliance, pilot safety scoring, GLEC air carbon)
 4. Seaways (ocean vessels, container tracking, port calls, berth allocations, searoute open-water routing, STCW Regulation VIII/1 watchkeeping compliance, master safety scoring, GLEC DWT-bucketed maritime carbon)
 
-Key Platform Capabilities & Architecture:
+KEY PLATFORM CAPABILITIES:
 - Digital Twin: Real-time ghost projection simulating scheduled vehicle/train/flight/vessel progress vs actual telemetry position, calculating schedule deviation in minutes.
 - Predictive ETA: Dynamic arrival time confidence intervals derived from historical standard deviation (≥3 trips/movements) or calibrated heuristics (±15%).
-- Safety & Crew Behavior: Deterministic rule-based scoring based on recorded telemetry (Road: harsh brakes >20 km/h, speeding >80 km/h; Rail: harsh deceleration >15 km/h, overspeeding >100 km/h MPS; Air: abrupt vertical rate >±3000 fpm / delta speed >50 kts, overspeeding >250 kts below 10,000 ft MSL; Sea: harsh rudder rate-of-turn ROT >20°/min per IMO Res A.526(13), overspeeding >12 kts harbor / >24 kts open water per COLREGs Rule 6).
-- Green Logistics & Carbon: Carbon footprint calculation based on GLEC Framework v3.2 & IMO (Sea Panamax: 0.0084 kg CO2e/t-km; Rail: 0.0106 kg CO2e/t-km; Road: 0.101 kg CO2e/t-km; Air: 0.608–1.516 kg CO2e/t-km) and Slot Intelligence congestion checks.
-- Operational Compliance: Geofencing boundary monitoring, port limits/anchorage logs, MTWA HOS rules, DGCA India CAR Sec 7 Series J FDTL limits, and IMO STCW Code Section A-VIII/1 watchkeeping rest-hour limits (min 10h rest / max 14h duty in 24h).
+- 48-Hour Timeline: Weather, traffic, toll, fatigue, and reroute event predictions for each vehicle.
+- Alternate Route Engine: Fastest / Cheapest / Safest / Balanced reroute recommendations with time saved, cost delta, and risk delta.
+- Safety & Crew Behavior: Deterministic rule-based scoring based on recorded telemetry.
+- Green Logistics & Carbon: GLEC Framework v3.2 calculations.
+- Operational Compliance: Geofencing, HOS rules, DGCA FDTL, IMO STCW watchkeeping.
 
-Behavioral Rules:
-1. Answer general questions, capability questions, and architecture inquiries directly with concise, structured, professional explanations. DO NOT call operational tools for general questions.
-2. Only execute operational tools when the user explicitly asks for live data (e.g. "What is the fleet status?", "Show unacknowledged alerts", "List active trips", "List active train movements", "List active flight movements", "List active voyage movements", "Check slot congestion").
-3. Automatically choose the right tool set based on context (Road trips vs Rail movements vs Air flight movements vs Sea voyage movements).
-4. When asked to acknowledge or clear an alert, propose the action using propose_acknowledge_alert so the human operator can confirm it.`;
+LANGUAGE RULES (CRITICAL):
+- Automatically detect the language of the user's message.
+- If the user writes in Tamil script (தமிழ்) or Tanglish (Tamil words in English letters like "vehicle eppo varum"), respond naturally in the same style.
+- If the user writes in English, respond in English.
+- If mixed Tamil+English, respond in natural conversational Tamil-English mix.
+- If the user says "தமிழில் சொல்லு" or "Explain in Tamil" or "Tamil la sollu", respond fully in Tamil.
+- If the user says "Explain in English" or "English la sollu", respond in English.
+- Operational values (vehicle numbers, speeds, distances, ETAs, coordinates, route names, units) MUST remain accurate regardless of language.
 
+BEHAVIORAL RULES:
+1. Answer general questions and architecture questions directly — do NOT call operational tools for general/conceptual questions.
+2. Only call operational tools when the user explicitly asks for live data (fleet status, vehicle location, alerts, trips, routes, etc.).
+3. Automatically choose the right tool set based on context (Road vs Rail vs Air vs Sea vs Fleet Twin).
+4. When asked to acknowledge or clear an alert, propose the action using propose_acknowledge_alert so the human operator can confirm.
+5. Maintain conversation context — if the user says "why?" after a vehicle query, understand they mean the previously mentioned vehicle.
+6. For operational questions, respond in this structure: Vehicle/Status → Location/Speed → ETA/Delay → Risk → Recommended Action.
+7. Distinguish data freshness clearly: LIVE / CACHED / FORECAST / MODEL PREDICTION.
+8. Never invent facts. If data is unavailable, say so clearly.
+9. Be concise for simple questions. Use structured formatting for analytical responses.
+
+ROLE-BASED ACCESS:
+- ADMIN: Full access to all fleet, vehicle, driver, trip, alert, route, analytics, and prediction data across the organization.
+- MANAGER: Access to fleet and operational data within their authorized scope.
+- DRIVER: Access ONLY to their own assigned vehicle, journey, route, checkpoints, alerts, ETA, and driving instructions. Must NOT see other vehicles, drivers, admin analytics, or restricted data.`;
+
+// ---------------------------------------------------------------------------
+// Language detection helper
+// ---------------------------------------------------------------------------
+function detectLanguage(text: string): 'tamil' | 'tanglish' | 'english' {
+  // Tamil Unicode block: U+0B80–U+0BFF
+  if (/[\u0B80-\u0BFF]/.test(text)) return 'tamil';
+
+  const tanglishWords = [
+    'eppo', 'enakku', 'enna', 'sollu', 'vehicle', 'varum', 'ponga', 'inga', 'enga',
+    'paaru', 'theriyuma', 'illa', 'aam', 'sari', 'yaaru', 'enna', 'evvalavu',
+    'yaarum', 'route', 'la sollu', 'la solu', 'solunga', 'parunga', 'vaanga',
+    'vithu', 'po', 'da', 'di', 'bro', 'machi', 'dei', 'dei', 'nalla', 'romba',
+  ];
+  const lower = text.toLowerCase();
+  if (tanglishWords.some((w) => lower.includes(w))) return 'tanglish';
+
+  return 'english';
+}
+
+// ---------------------------------------------------------------------------
+// AiService
+// ---------------------------------------------------------------------------
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private genAiClient: GoogleGenAI | null = null;
   private readonly modelName: string;
   private pendingActions = new Map<string, AiProposedAction>();
+  private processingActions = new Set<string>();
+  private completedActions = new Map<string, { success: boolean; message: string }>();
 
   constructor(
     private readonly configService: ConfigService,
@@ -51,8 +100,10 @@ export class AiService {
     private readonly trainMovementsService: TrainMovementsService,
     private readonly flightMovementsService: FlightMovementsService,
     private readonly voyageMovementsService: VoyageMovementsService,
+    private readonly fleetTwinService: FleetTwinService,
   ) {
-    this.modelName = this.configService.get<string>('GEMINI_MODEL') || 'gemini-3.6-flash';
+    const rawModel = this.configService.get<string>('GEMINI_MODEL');
+    this.modelName = rawModel && rawModel.trim() ? rawModel.trim() : 'gemini-3-flash-preview';
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
 
     if (apiKey && apiKey.trim() && apiKey !== 'mock-gemini-key') {
@@ -67,44 +118,576 @@ export class AiService {
     }
   }
 
+  // -------------------------------------------------------------------------
+  // RBAC: Resolve driver's authorized vehicle & trip scope from backend DB
+  // -------------------------------------------------------------------------
+  private async getDriverScope(
+    orgId: string,
+    userId: string,
+  ): Promise<{ vehicleIds: string[]; tripIds: string[]; registrations: string[] }> {
+    const vehicleIds: string[] = [];
+    const tripIds: string[] = [];
+    const registrations: string[] = [];
+
+    try {
+      const { data: driverRows } = await this.supabase.adminClient
+        .from('drivers')
+        .select('id, license_number')
+        .eq('org_id', orgId)
+        .eq('user_id', userId);
+
+      const driverIds = (driverRows || []).map((d: any) => d.id);
+      if (driverIds.length > 0) {
+        const { data: tripRows } = await this.supabase.adminClient
+          .from('trips')
+          .select('id, vehicle_id')
+          .eq('org_id', orgId)
+          .in('driver_id', driverIds);
+
+        for (const t of tripRows || []) {
+          if (t.id) tripIds.push(t.id);
+          if (t.vehicle_id) vehicleIds.push(t.vehicle_id);
+        }
+      }
+
+      // Also match mock fleet-twin driver by user email/full_name or license_number
+      const { data: userRow } = await this.supabase.adminClient
+        .from('users')
+        .select('full_name, email')
+        .eq('id', userId)
+        .maybeSingle();
+
+      const allVehicles = await this.fleetTwinService.getAllVehicles();
+      for (const v of allVehicles) {
+        const drv = (v as any).driver;
+        const nameMatch =
+          userRow?.full_name &&
+          drv?.name &&
+          drv.name.toLowerCase().includes(userRow.full_name.toLowerCase());
+        const licenseMatch = (driverRows || []).some(
+          (d: any) => d.license_number && drv?.license_number === d.license_number,
+        );
+        if (nameMatch || licenseMatch || vehicleIds.includes(v.id)) {
+          vehicleIds.push(v.id);
+          if (v.registration_number) {
+            registrations.push(v.registration_number.replace(/\s+/g, '').toUpperCase());
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.debug(`Driver scope lookup error: ${err}`);
+    }
+
+    return {
+      vehicleIds: Array.from(new Set(vehicleIds)),
+      tripIds: Array.from(new Set(tripIds)),
+      registrations: Array.from(new Set(registrations)),
+    };
+  }
+
   /**
-   * Execute read-only tool functions against real operational data
+   * Resolve a vehicle UUID or registration number (e.g., "TN 01 AB 4021") to its vehicle ID.
    */
-  private async executeTool(orgId: string, name: string, args: any): Promise<any> {
-    this.logger.log(`Executing AI Tool: ${name} with args: ${JSON.stringify(args)}`);
+  private async resolveVehicleId(vehicleIdOrReg: string): Promise<string> {
+    if (!vehicleIdOrReg) return vehicleIdOrReg;
+    try {
+      const all = await this.fleetTwinService.getAllVehicles();
+      const normalized = vehicleIdOrReg.replace(/\s+/g, '').toUpperCase();
+      const match = all.find(
+        (v) =>
+          v.id === vehicleIdOrReg ||
+          (v.registration_number && v.registration_number.replace(/\s+/g, '').toUpperCase() === normalized),
+      );
+      return match ? match.id : vehicleIdOrReg;
+    } catch {
+      return vehicleIdOrReg;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Tool Executor — RBAC enforced here, not just in system prompt
+  // -------------------------------------------------------------------------
+  private async executeTool(
+    orgId: string,
+    userId: string,
+    userRole: string,
+    name: string,
+    args: any,
+  ): Promise<any> {
+    this.logger.log(`AI Tool [${userRole}/${userId}]: ${name}(${JSON.stringify(args)})`);
+
+    const isDriver = userRole === 'driver';
+    const driverScope = isDriver ? await this.getDriverScope(orgId, userId) : null;
+
+    const isVehicleAuthorized = (resolvedId: string): boolean => {
+      if (!isDriver || !driverScope) return true;
+      return driverScope.vehicleIds.includes(resolvedId);
+    };
 
     switch (name) {
+      // ---- DASHBOARD (Reconciled: Org DB + Fleet Twin, matching Roadways Dashboard) ----
       case 'get_dashboard_stats': {
-        const stats = await this.dashboardService.getStats(orgId);
+        if (isDriver) {
+          return {
+            error: 'Access denied: Drivers cannot access organization-wide dashboard analytics. Ask about your assigned vehicle or trip instead.',
+          };
+        }
+
+        let dbStats: any = null;
+        let dbError: string | null = null;
+        try {
+          dbStats = await this.dashboardService.getStats(orgId);
+        } catch (err: any) {
+          dbError = err?.message || 'Dashboard DB unavailable';
+          this.logger.warn(`get_dashboard_stats DB error: ${dbError}`);
+        }
+
+        let twinOverview: any = null;
+        try {
+          twinOverview = await this.fleetTwinService.getOverview();
+        } catch (err: any) {
+          this.logger.warn(`get_dashboard_stats FleetTwin error: ${err?.message}`);
+        }
+
+        if (!dbStats && !twinOverview) {
+          return {
+            error: `Dashboard statistics unavailable: ${dbError || 'Services temporarily unavailable'}`,
+            dataSource: 'UNAVAILABLE',
+          };
+        }
+
+        const realActive = dbStats?.activeVehicles?.value ?? 0;
+        const realTotal = dbStats?.totalFleetToday?.value ?? 0;
+        const realAlerts = dbStats?.activeAlerts ?? 0;
+        const realSpeed = dbStats?.avgSpeedKmh?.value ?? 0;
+        const realArrived = dbStats?.arrivedCount?.value ?? 0;
+        const realDeparted = dbStats?.departedCount?.value ?? 0;
+
+        const twinActive = twinOverview?.enabled ? (twinOverview.totals?.active_vehicles ?? 0) : 0;
+        const twinTotal = twinOverview?.enabled ? (twinOverview.totals?.total_fleet ?? 0) : 0;
+        const twinAlerts = twinOverview?.enabled ? (twinOverview.totals?.active_alerts ?? 0) : 0;
+        const twinSpeed = twinOverview?.enabled ? (twinOverview.totals?.average_speed_kmh ?? 0) : 0;
+        const twinArrived = twinOverview?.enabled ? (twinOverview.totals?.arrived_today ?? 0) : 0;
+        const twinDeparted = twinOverview?.enabled ? (twinOverview.totals?.departed_today ?? 0) : 0;
+
+        const combinedSpeed =
+          realSpeed > 0 && twinSpeed > 0
+            ? Math.round(((realSpeed + twinSpeed) / 2) * 10) / 10
+            : twinSpeed > 0
+            ? twinSpeed
+            : realSpeed;
+
         return {
-          activeAlerts: stats.activeAlerts,
-          activeVehicles: stats.activeVehicles.value,
-          totalFleet: stats.totalFleetToday.value,
-          avgSpeedKmh: stats.avgSpeedKmh.value,
-          arrivedCount: stats.arrivedCount.value,
-          departedCount: stats.departedCount.value,
+          activeAlerts: realAlerts + twinAlerts,
+          activeVehicles: realActive + twinActive,
+          totalFleet: realTotal + twinTotal,
+          avgSpeedKmh: combinedSpeed,
+          arrivedCount: realArrived + twinArrived,
+          departedCount: realDeparted + twinDeparted,
+          breakdown: {
+            orgDatabase: dbError ? { error: dbError } : { activeVehicles: realActive, totalFleet: realTotal, activeAlerts: realAlerts },
+            fleetTwin: twinOverview?.enabled ? { activeVehicles: twinActive, totalFleet: twinTotal, activeAlerts: twinAlerts } : null,
+          },
+          dataFreshness: 'LIVE_RECONCILED',
+          timestamp: new Date().toISOString(),
         };
       }
 
+      // ---- FLEET TWIN OVERVIEW ----
+      case 'get_fleet_twin_overview': {
+        const overview = await this.fleetTwinService.getOverview();
+        const vehicles = isDriver
+          ? overview.vehicles
+              .filter((v) => driverScope?.vehicleIds.includes(v.id))
+              .map((v) => ({
+                id: v.id,
+                registration: v.registration_number,
+                truckType: v.truck_type,
+                status: v.status,
+                speedKmh: v.speed_kmh,
+                location: { lat: v.current_lat, lng: v.current_lng },
+                progressPct: v.progress_pct,
+                currentCheckpoint: v.current_checkpoint_name,
+                nextCheckpoint: v.next_checkpoint_name,
+                nextCheckpointDistKm: v.next_checkpoint_distance_km,
+                predictedEta: v.predicted_eta,
+                delayMinutes: v.total_predicted_delay_minutes,
+                riskScore: v.risk_score,
+              }))
+          : overview.vehicles.map((v) => ({
+              id: v.id,
+              registration: v.registration_number,
+              truckType: v.truck_type,
+              status: v.status,
+              speedKmh: v.speed_kmh,
+              location: { lat: v.current_lat, lng: v.current_lng },
+              progressPct: v.progress_pct,
+              fleetName: v.fleet_name,
+              driverName: v.driver?.name,
+              currentCheckpoint: v.current_checkpoint_name,
+              nextCheckpoint: v.next_checkpoint_name,
+              nextCheckpointDistKm: v.next_checkpoint_distance_km,
+              predictedEta: v.predicted_eta,
+              delayMinutes: v.total_predicted_delay_minutes,
+              riskScore: v.risk_score,
+              liveTraffic: v.live_traffic,
+            }));
+
+        const alerts = isDriver
+          ? overview.alerts.filter((a) => driverScope?.vehicleIds.includes(a.vehicle_id))
+          : overview.alerts;
+
+        if (isDriver && vehicles.length === 0) {
+          return {
+            error: 'No assigned vehicle found for your driver account. Contact your fleet manager.',
+            dataSource: 'RBAC_FILTERED',
+          };
+        }
+
+        return {
+          enabled: overview.enabled,
+          totalFleet: isDriver ? vehicles.length : overview.totals.total_fleet,
+          activeVehicles: isDriver ? vehicles.length : overview.totals.active_vehicles,
+          activeAlerts: alerts.length,
+          averageSpeedKmh: isDriver
+            ? vehicles[0]?.speedKmh || 0
+            : overview.totals.average_speed_kmh,
+          arrivedToday: isDriver ? 0 : overview.totals.arrived_today,
+          departedToday: isDriver ? vehicles.length : overview.totals.departed_today,
+          vehicles,
+          alerts,
+          dataSource: 'LIVE_FLEET_TWIN',
+        };
+      }
+
+      // ---- ALL VEHICLES LIST ----
+      case 'get_all_vehicles': {
+        const allV = await this.fleetTwinService.getAllVehicles();
+        const filtered = isDriver
+          ? allV.filter((v) => driverScope?.vehicleIds.includes(v.id))
+          : allV;
+        if (isDriver && filtered.length === 0) {
+          return { error: 'Access denied. No assigned vehicle found for your driver account.' };
+        }
+        return filtered.map((v) => ({
+          id: v.id,
+          registration: v.registration_number,
+          truckType: v.truck_type,
+          status: v.status,
+          speedKmh: v.speed_kmh,
+          lat: v.current_lat,
+          lng: v.current_lng,
+          progressPct: v.progress_pct,
+          fuelType: v.fuel_type,
+          capacityTons: v.capacity_tons,
+          currentLoadTons: v.current_load_tons,
+          driverName: (v as any).driver?.name,
+          fleetName: (v as any).fleet?.name,
+          routeName: (v as any).route?.name,
+        }));
+      }
+
+      // ---- VEHICLE DIGITAL TWIN ----
+      case 'get_vehicle_digital_twin': {
+        if (!args.vehicle_id) return { error: 'vehicle_id or registration number is required' };
+        const vehicleId = await this.resolveVehicleId(String(args.vehicle_id));
+        if (!isVehicleAuthorized(vehicleId)) {
+          return { error: 'Access denied: Drivers can only access their own assigned vehicle.' };
+        }
+
+        const whatIf: any = {
+          rain_severity_multiplier: Number(args.rain_severity_multiplier) || 1.0,
+          toll_strike_hours: Number(args.toll_strike_hours) || 0,
+          breakdown_hours: Number(args.breakdown_hours) || 0,
+          traffic_congestion_multiplier: Number(args.traffic_congestion_multiplier) || 1.0,
+        };
+
+        try {
+          const twin = await this.fleetTwinService.getVehicleDigitalTwin(vehicleId, whatIf);
+          return {
+            vehicleId: twin.vehicle.id,
+            registration: twin.vehicle.registration_number,
+            truckType: twin.vehicle.truck_type,
+            status: twin.vehicle.status,
+            currentLocation: { lat: twin.vehicle.current_lat, lng: twin.vehicle.current_lng },
+            speedKmh: twin.vehicle.speed_kmh,
+            progressPct: twin.current_progress_pct,
+            fleetName: twin.fleet?.name,
+            driverName: twin.driver?.name,
+            driverPhone: !isDriver ? twin.driver?.phone : undefined,
+            driverHoursDrivenToday: twin.driver?.hours_driven_today,
+            driverRestCompliance: twin.driver?.rest_hours_compliance,
+            routeName: twin.route?.name,
+            originCity: twin.route?.origin_city,
+            destinationCity: twin.route?.destination_city,
+            totalDistanceKm: twin.route?.total_distance_km,
+            plannedEta: twin.planned_eta,
+            predictedEta: twin.predicted_eta,
+            delayMinutes: twin.total_predicted_delay_minutes,
+            onTimeProbability: twin.on_time_probability,
+            riskScore: twin.risk_score,
+            topDelayCauses: twin.top_delay_causes,
+            driverFatiguePct: twin.driver_fatigue_pct,
+            currentCheckpoint: twin.current_checkpoint?.name,
+            nextCheckpoint: twin.next_checkpoint?.name,
+            upcomingEvents: (twin.timeline || []).slice(0, 6).map((e: any) => ({
+              eventType: e.event_type,
+              time: e.timestamp,
+              location: e.location_name,
+              delayMinutes: e.delay_minutes,
+              severity: e.severity,
+              description: e.description,
+              hoursFromNow: e.hours_from_now,
+            })),
+            etaBreakdown: twin.eta_breakdown,
+            explanation: twin.explanation,
+            scenarioComparison: twin.scenario_comparison,
+            activeReroute: twin.active_reroute
+              ? {
+                  recommendedRoute: twin.active_reroute.recommended_route_name,
+                  mode: twin.active_reroute.mode,
+                  timeSavedMinutes: twin.active_reroute.time_saved_minutes,
+                  extraDistanceKm: twin.active_reroute.extra_distance_km,
+                  newEta: twin.active_reroute.new_eta,
+                }
+              : null,
+            dataFreshness: twin.data_freshness,
+            liveTraffic: twin.live_traffic,
+            dataSource: 'LIVE_DIGITAL_TWIN_48H',
+          };
+        } catch (e: any) {
+          return { error: `Vehicle digital twin not found: ${e.message}` };
+        }
+      }
+
+      // ---- VEHICLE CHECKPOINTS ----
+      case 'get_vehicle_checkpoints': {
+        if (!args.vehicle_id) return { error: 'vehicle_id or registration number is required' };
+        const vehicleId = await this.resolveVehicleId(String(args.vehicle_id));
+        if (!isVehicleAuthorized(vehicleId)) {
+          return { error: 'Access denied: Drivers can only access checkpoints for their own assigned vehicle.' };
+        }
+        try {
+          const checkpoints = await this.fleetTwinService.getCheckpointsByVehicle(vehicleId);
+          const vehicle = await this.fleetTwinService.getVehicleById(vehicleId);
+          const totalDist = (vehicle as any).route?.total_distance_km || 500;
+          const currentDist = (vehicle.progress_pct / 100) * totalDist;
+
+          return checkpoints.map((cp) => ({
+            id: cp.id,
+            name: cp.name,
+            type: cp.type,
+            sequence: cp.sequence_order,
+            distanceFromStartKm: cp.distance_from_start_km,
+            lat: cp.latitude,
+            lng: cp.longitude,
+            crossed: cp.distance_from_start_km <= currentDist,
+            isNext: cp.distance_from_start_km > currentDist &&
+              checkpoints.find(c => c.distance_from_start_km > currentDist)?.id === cp.id,
+          }));
+        } catch (e: any) {
+          return { error: `Could not retrieve checkpoints: ${e.message}` };
+        }
+      }
+
+      // ---- VEHICLE REROUTE ----
+      case 'get_vehicle_reroute': {
+        if (!args.vehicle_id) return { error: 'vehicle_id or registration number is required' };
+        const vehicleId = await this.resolveVehicleId(String(args.vehicle_id));
+        if (!isVehicleAuthorized(vehicleId)) {
+          return { error: 'Access denied: Drivers can only request reroutes for their own assigned vehicle.' };
+        }
+        const mode = args.mode || 'balanced';
+        const whatIf: any = {
+          rain_severity_multiplier: Number(args.rain_severity_multiplier) || 1.0,
+          toll_strike_hours: Number(args.toll_strike_hours) || 0,
+          breakdown_hours: Number(args.breakdown_hours) || 0,
+          traffic_congestion_multiplier: Number(args.traffic_congestion_multiplier) || 1.0,
+        };
+        try {
+          const reroute = await this.fleetTwinService.calculateReroute(vehicleId, mode as any, whatIf);
+          return {
+            vehicleId: reroute.vehicle_id,
+            mode: reroute.mode,
+            recommendedRoute: reroute.recommended_route_name,
+            timeSavedMinutes: reroute.time_saved_minutes,
+            extraDistanceKm: reroute.extra_distance_km,
+            fuelCostDeltaInr: reroute.fuel_cost_delta_inr,
+            tollCostDeltaInr: reroute.toll_cost_delta_inr,
+            riskScoreDelta: reroute.risk_score_delta,
+            newEta: reroute.new_eta,
+            meetingDeadlineProb: reroute.meeting_deadline_prob,
+            feasibility: reroute.feasibility,
+            problems: reroute.problems,
+            reason: reroute.reason,
+            dataSource: 'REROUTE_ENGINE_LIVE',
+          };
+        } catch (e: any) {
+          return { error: `Reroute calculation failed: ${e.message}` };
+        }
+      }
+
+      // ---- VEHICLE ALERTS ----
+      case 'get_vehicle_alerts': {
+        const vehicleId = args.vehicle_id
+          ? await this.resolveVehicleId(String(args.vehicle_id))
+          : undefined;
+        if (isDriver) {
+          if (vehicleId && !isVehicleAuthorized(vehicleId)) {
+            return { error: 'Access denied: Drivers can only view alerts for their own assigned vehicle.' };
+          }
+          if (!driverScope || driverScope.vehicleIds.length === 0) {
+            return [];
+          }
+        }
+
+        const query = this.supabase.adminClient
+          .from('alerts')
+          .select('*')
+          .eq('org_id', orgId)
+          .is('acknowledged_at', null)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (vehicleId) {
+          query.eq('vehicle_id', vehicleId);
+        } else if (isDriver && driverScope) {
+          query.in('vehicle_id', driverScope.vehicleIds);
+        }
+
+        const { data: alerts } = await query;
+        return (alerts || []).map((a: any) => ({
+          id: a.id,
+          type: a.type,
+          severity: a.severity,
+          message: a.message,
+          vehicleId: a.vehicle_id,
+          createdAt: a.created_at,
+        }));
+      }
+
+      // ---- EXISTING + FLEET TWIN ACTIVE TRIPS (Reconciled) ----
       case 'list_active_trips': {
-        const trips = await this.tripsService.findAll(orgId);
-        const active = trips.filter((t) => t.status === 'in_transit' || t.status === 'planned');
-        return active.map((t) => ({
+        let orgTrips: any[] = [];
+        let orgTripError: string | null = null;
+        try {
+          orgTrips = await this.tripsService.findAll(orgId);
+        } catch (err: any) {
+          orgTripError = err?.message || 'Trips database query failed';
+          this.logger.warn(`list_active_trips DB error: ${orgTripError}`);
+        }
+
+        const ACTIVE_TRIP_STATUSES = new Set([
+          'in_transit',
+          'planned',
+          'dispatched',
+          'en_route',
+          'delayed',
+          'resting',
+          'paused',
+        ]);
+
+        let activeOrgTrips = orgTrips.filter((t) =>
+          ACTIVE_TRIP_STATUSES.has(String(t.status || '').toLowerCase()),
+        );
+        if (isDriver && driverScope) {
+          activeOrgTrips = activeOrgTrips.filter(
+            (t) =>
+              t.driver?.user?.id === userId ||
+              driverScope.tripIds.includes(t.id) ||
+              (t.vehicle_id && driverScope.vehicleIds.includes(t.vehicle_id)),
+          );
+        }
+
+        const reconciled: any[] = activeOrgTrips.map((t) => ({
           tripId: t.id,
+          source: 'org_trips',
           origin: t.origin_label,
           destination: t.destination_label,
-          vehicle: t.vehicle?.registration_number,
+          vehicleId: t.vehicle_id,
+          vehicle: t.vehicle?.registration_number || 'Unassigned',
+          vehicleType: t.vehicle?.vehicle_type,
           driver: t.driver?.user?.full_name || t.driver?.license_number,
           status: t.status,
+          dispatchTime: t.started_at || t.created_at,
           distanceKm: t.distance_km,
           predictedDurationMin: t.predicted_duration_minutes,
+          dataFreshness: 'LIVE_DB',
         }));
+
+        const seenRegistrations = new Set(
+          reconciled
+            .map((r) => String(r.vehicle || '').replace(/\s+/g, '').toUpperCase())
+            .filter(Boolean),
+        );
+
+        let twinError: string | null = null;
+        try {
+          const twinOverview = await this.fleetTwinService.getOverview();
+          if (twinOverview?.enabled && Array.isArray(twinOverview.vehicles)) {
+            for (const v of twinOverview.vehicles) {
+              if (isDriver && !driverScope?.vehicleIds.includes(v.id)) continue;
+              const normalizedReg = String(v.registration_number || '')
+                .replace(/\s+/g, '')
+                .toUpperCase();
+              if (seenRegistrations.has(normalizedReg)) continue;
+
+              const vStatus = String(v.status || '').toLowerCase();
+              if (vStatus === 'completed' || vStatus === 'cancelled') continue;
+              if ((v.progress_pct ?? 0) >= 100) continue;
+              if (!v.route && vStatus === 'idle') continue;
+
+              reconciled.push({
+                tripId: `twin-${v.id}`,
+                vehicleId: v.id,
+                source: 'fleet_twin',
+                origin: v.route?.origin_city || 'Origin',
+                destination: v.route?.destination_city || 'Destination',
+                routeName: v.route?.name,
+                vehicle: v.registration_number,
+                vehicleType: v.truck_type,
+                driver: v.driver?.name,
+                status: v.status, // en_route, delayed, resting, idle
+                currentLocation: { lat: v.current_lat, lng: v.current_lng },
+                speedKmh: v.speed_kmh,
+                progressPct: v.progress_pct,
+                nextCheckpoint: v.next_checkpoint_name,
+                nextCheckpointDistKm: v.next_checkpoint_distance_km,
+                plannedEta: v.route?.planned_eta,
+                predictedEta: v.predicted_eta,
+                delayMinutes: v.total_predicted_delay_minutes,
+                riskScore: v.risk_score,
+                distanceKm: v.route?.total_distance_km,
+                dataFreshness: 'LIVE_FLEET_TWIN',
+              });
+            }
+          }
+        } catch (err: any) {
+          twinError = err?.message || 'Fleet Twin overview unavailable';
+          this.logger.warn(`list_active_trips FleetTwin error: ${twinError}`);
+        }
+
+        if (orgTripError && twinError) {
+          return {
+            error: `Trip service temporarily unavailable (${orgTripError}; ${twinError})`,
+            dataSource: 'UNAVAILABLE',
+          };
+        }
+
+        return reconciled;
       }
 
       case 'get_trip_details': {
         if (!args.trip_id) return { error: 'trip_id is required' };
         try {
           const trip = await this.tripsService.findOne(orgId, args.trip_id);
+          if (
+            isDriver &&
+            trip.driver?.user?.id !== userId &&
+            !driverScope?.tripIds.includes(trip.id)
+          ) {
+            return { error: 'Access denied: Drivers can only access their own assigned trip.' };
+          }
           const eta = await this.tripsService.getEta(orgId, args.trip_id).catch(() => null);
           return {
             tripId: trip.id,
@@ -131,7 +714,9 @@ export class AiService {
         }
       }
 
+      // ---- TRAIN MOVEMENTS ----
       case 'list_active_train_movements': {
+        if (isDriver) return { error: 'Access denied: Roadway drivers cannot access Railways operations.' };
         const movements = await this.trainMovementsService.findAll(orgId);
         const active = movements.filter((m) => m.status === 'in_transit' || m.status === 'planned');
         return active.map((m) => ({
@@ -149,6 +734,7 @@ export class AiService {
       }
 
       case 'get_train_movement_details': {
+        if (isDriver) return { error: 'Access denied: Roadway drivers cannot access Railways operations.' };
         if (!args.movement_id) return { error: 'movement_id is required' };
         try {
           const movement = await this.trainMovementsService.findOne(orgId, args.movement_id);
@@ -181,7 +767,9 @@ export class AiService {
         }
       }
 
+      // ---- FLIGHT MOVEMENTS ----
       case 'list_active_flight_movements': {
+        if (isDriver) return { error: 'Access denied: Roadway drivers cannot access Airways operations.' };
         const movements = await this.flightMovementsService.findAll(orgId);
         const active = movements.filter((m) => m.status === 'in_transit' || m.status === 'planned');
         return active.map((m) => ({
@@ -198,6 +786,7 @@ export class AiService {
       }
 
       case 'get_flight_movement_details': {
+        if (isDriver) return { error: 'Access denied: Roadway drivers cannot access Airways operations.' };
         const movementId = args.movement_id || args.flight_movement_id;
         if (!movementId) return { error: 'movement_id is required' };
         try {
@@ -233,7 +822,9 @@ export class AiService {
         }
       }
 
+      // ---- VOYAGE MOVEMENTS ----
       case 'list_active_voyage_movements': {
+        if (isDriver) return { error: 'Access denied: Roadway drivers cannot access Seaways operations.' };
         const movements = await this.voyageMovementsService.findAll(orgId);
         const active = movements.filter((m) => m.status === 'in_transit' || m.status === 'planned');
         return active.map((m: any) => {
@@ -259,6 +850,7 @@ export class AiService {
       }
 
       case 'get_voyage_movement_details': {
+        if (isDriver) return { error: 'Access denied: Roadway drivers cannot access Seaways operations.' };
         const movementId = args.movement_id || args.voyage_movement_id;
         if (!movementId) return { error: 'movement_id is required' };
         try {
@@ -297,7 +889,9 @@ export class AiService {
         }
       }
 
+      // ---- SLOT CHECKS ----
       case 'check_rail_slot': {
+        if (isDriver) return { error: 'Access denied: Roadway drivers cannot access Railways slot intelligence.' };
         if (!args.origin_station_id || !args.destination_station_id) {
           return { error: 'origin_station_id and destination_station_id are required' };
         }
@@ -310,6 +904,7 @@ export class AiService {
       }
 
       case 'check_port_slot': {
+        if (isDriver) return { error: 'Access denied: Roadway drivers cannot access Seaways port slot intelligence.' };
         if (!args.origin_port_id || !args.destination_port_id) {
           return { error: 'origin_port_id and destination_port_id are required' };
         }
@@ -321,235 +916,463 @@ export class AiService {
         );
       }
 
+      // ---- ALERTS (Reconciled: Org DB + Fleet Twin) ----
       case 'list_unacknowledged_alerts': {
-        const { data: alerts } = await this.supabase.adminClient
-          .from('alerts')
-          .select('*')
-          .eq('org_id', orgId)
-          .is('acknowledged_at', null)
-          .order('created_at', { ascending: false })
-          .limit(10);
+        let dbAlerts: any[] = [];
+        let dbError: string | null = null;
+        try {
+          const query = this.supabase.adminClient
+            .from('alerts')
+            .select('*')
+            .eq('org_id', orgId)
+            .is('acknowledged_at', null)
+            .order('created_at', { ascending: false })
+            .limit(15);
 
-        return (alerts || []).map((a: any) => ({
+          const { data: alerts, error } = await query;
+          if (error) {
+            dbError = error.message;
+          } else {
+            dbAlerts = isDriver && driverScope
+              ? (alerts || []).filter((a: any) => driverScope.vehicleIds.includes(a.vehicle_id))
+              : (alerts || []);
+          }
+        } catch (err: any) {
+          dbError = err?.message || 'Alerts DB error';
+        }
+
+        const mappedDb = dbAlerts.map((a: any) => ({
           id: a.id,
+          alertSource: 'db_alert' as const,
+          source: 'org_alerts',
           type: a.type,
           severity: a.severity,
           message: a.message,
+          vehicleId: a.vehicle_id,
           createdAt: a.created_at,
         }));
+
+        let twinAlerts: any[] = [];
+        try {
+          const overview = await this.fleetTwinService.getOverview();
+          if (overview?.enabled && Array.isArray(overview.alerts)) {
+            const filteredTwin = isDriver && driverScope
+              ? overview.alerts.filter((a) => driverScope.vehicleIds.includes(a.vehicle_id))
+              : overview.alerts;
+            twinAlerts = filteredTwin
+              .map((a, idx) => ({
+                id: `twin-alert-${a.vehicle_id}-${idx}`,
+                alertSource: 'fleet_twin' as const,
+                source: 'fleet_twin',
+                type: a.event_type,
+                eventType: a.event_type,
+                severity: a.severity,
+                message: `${a.registration_number}: ${a.description} (${a.location_name}, +${a.delay_minutes}m delay)`,
+                vehicleId: a.vehicle_id,
+                registration: a.registration_number,
+                locationName: a.location_name,
+                delayMinutes: a.delay_minutes,
+              }))
+              .filter(
+                (a) =>
+                  !this.fleetTwinService.isTwinAlertAcknowledged?.(
+                    a.id,
+                    a.vehicleId,
+                    a.eventType,
+                  ),
+              );
+          }
+        } catch {
+          // ignore if twin unavailable
+        }
+
+        if (dbError && twinAlerts.length === 0 && mappedDb.length === 0) {
+          return { error: `Alerts service unavailable: ${dbError}` };
+        }
+
+        return [...mappedDb, ...twinAlerts];
       }
 
+      case 'propose_acknowledge_alert':
+        // handled in processChat before executeTool is called
+        return { error: 'Use propose_acknowledge_alert flow in processChat' };
+
       default:
-        return { error: `Unknown tool ${name}` };
+        return { error: `Unknown tool: ${name}` };
     }
   }
 
-  /**
-   * Main chat turn handler with Gemini tool-calling and context-aware fallback.
-   */
-  async processChat(orgId: string, req: AiChatRequest): Promise<AiChatMessage> {
+  // -------------------------------------------------------------------------
+  // Build the tool declarations for Gemini
+  // -------------------------------------------------------------------------
+  private buildToolDeclarations(): FunctionDeclaration[] {
+    return [
+      {
+        name: 'get_dashboard_stats',
+        description: 'Get live operational dashboard stats: active vehicles, alert count, average speed, trip departures/arrivals for the organization.',
+        parameters: { type: Type.OBJECT, properties: {} },
+      },
+      {
+        name: 'get_fleet_twin_overview',
+        description: 'Get the complete Fleet Digital Twin overview with all vehicle positions, speeds, ETAs, delay minutes, risk scores, next checkpoints, driver info, and high-priority alerts. Use for general fleet questions: "how many vehicles?", "fleet status", "which vehicles are delayed?", "highest risk vehicle?", "compare all vehicles".',
+        parameters: { type: Type.OBJECT, properties: {} },
+      },
+      {
+        name: 'get_all_vehicles',
+        description: 'Get a summary list of all mock fleet vehicles with registration, type, status, speed, location, progress, and load. Use when user asks to list vehicles.',
+        parameters: { type: Type.OBJECT, properties: {} },
+      },
+      {
+        name: 'get_vehicle_digital_twin',
+        description: 'Get complete 48-hour Digital Twin intelligence for a specific vehicle (accepts UUID or registration like "TN 01 AB 4021"): current location, speed, status, planned ETA, predicted ETA, delay minutes, on-time probability, risk score, top delay causes, driver fatigue, checkpoint status, upcoming weather/traffic/toll events, ETA breakdown, alternate reroute recommendation, and AI explanation. Also supports optional What-If simulation parameters (e.g., rain_severity_multiplier=2.0, toll_strike_hours=2) to answer "what will happen if rain increases or toll waiting increases?".',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            vehicle_id: { type: Type.STRING, description: 'The vehicle UUID or registration number (e.g. TN 01 AB 4021)' },
+            rain_severity_multiplier: { type: Type.NUMBER, description: 'Optional What-If rain multiplier (default 1.0, e.g. 2.0 for heavy rain)' },
+            toll_strike_hours: { type: Type.NUMBER, description: 'Optional What-If toll plaza waiting delay in hours (default 0)' },
+            traffic_congestion_multiplier: { type: Type.NUMBER, description: 'Optional What-If traffic congestion multiplier (default 1.0)' },
+            breakdown_hours: { type: Type.NUMBER, description: 'Optional What-If breakdown delay in hours (default 0)' },
+          },
+          required: ['vehicle_id'],
+        },
+      },
+      {
+        name: 'get_vehicle_checkpoints',
+        description: 'Get all checkpoints for a vehicle\'s route with crossed/pending status. Use to answer: "which checkpoints remain?", "has it crossed Vellore?", "what is the next checkpoint?".',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            vehicle_id: { type: Type.STRING, description: 'The vehicle UUID or registration number' },
+          },
+          required: ['vehicle_id'],
+        },
+      },
+      {
+        name: 'get_vehicle_reroute',
+        description: 'Calculate the optimal alternate route for a specific vehicle. Modes: fastest (minimize time), cheapest (minimize cost), safest (minimize risk), balanced (best all-round). Returns time saved, extra distance, fuel/toll cost delta, risk delta, and new ETA.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            vehicle_id: { type: Type.STRING, description: 'The vehicle UUID or registration number' },
+            mode: { type: Type.STRING, description: 'Reroute mode: fastest | cheapest | safest | balanced' },
+            rain_severity_multiplier: { type: Type.NUMBER, description: 'Optional What-If rain multiplier (default 1.0)' },
+            toll_strike_hours: { type: Type.NUMBER, description: 'Optional What-If toll waiting hours (default 0)' },
+          },
+          required: ['vehicle_id'],
+        },
+      },
+      {
+        name: 'get_vehicle_alerts',
+        description: 'Get active unacknowledged alerts for a specific vehicle or all vehicles in the org.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            vehicle_id: { type: Type.STRING, description: 'Optional: filter alerts to a specific vehicle UUID' },
+          },
+        },
+      },
+      {
+        name: 'list_active_trips',
+        description: 'List all currently in-transit or planned Roadways fleet shipments and manifests.',
+        parameters: { type: Type.OBJECT, properties: {} },
+      },
+      {
+        name: 'get_trip_details',
+        description: 'Get full operational intelligence for a specific Roadways trip ID including ETA confidence, carbon, and driver safety score.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            trip_id: { type: Type.STRING, description: 'The unique trip UUID' },
+          },
+          required: ['trip_id'],
+        },
+      },
+      {
+        name: 'list_active_train_movements',
+        description: 'List all currently in-transit or planned Railways freight train movements, rakes, and locomotives.',
+        parameters: { type: Type.OBJECT, properties: {} },
+      },
+      {
+        name: 'get_train_movement_details',
+        description: 'Get full operational intelligence for a specific Railways train movement ID.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            movement_id: { type: Type.STRING, description: 'The unique train movement UUID' },
+          },
+          required: ['movement_id'],
+        },
+      },
+      {
+        name: 'list_active_flight_movements',
+        description: 'List all currently in-transit or planned Airways flight movements, aircraft, and pilots.',
+        parameters: { type: Type.OBJECT, properties: {} },
+      },
+      {
+        name: 'get_flight_movement_details',
+        description: 'Get full operational intelligence for a specific Airways flight movement ID.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            movement_id: { type: Type.STRING, description: 'The unique flight movement UUID' },
+          },
+          required: ['movement_id'],
+        },
+      },
+      {
+        name: 'list_active_voyage_movements',
+        description: 'List all currently in-transit or planned Seaways voyage movements, vessels, and ship masters.',
+        parameters: { type: Type.OBJECT, properties: {} },
+      },
+      {
+        name: 'get_voyage_movement_details',
+        description: 'Get full operational intelligence for a specific Seaways voyage movement ID.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            movement_id: { type: Type.STRING, description: 'The unique voyage movement UUID' },
+          },
+          required: ['movement_id'],
+        },
+      },
+      {
+        name: 'check_rail_slot',
+        description: 'Check rail slot congestion on a specific station corridor for proposed departure times.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            origin_station_id: { type: Type.STRING, description: 'Origin station UUID' },
+            destination_station_id: { type: Type.STRING, description: 'Destination station UUID' },
+            proposed_departure: { type: Type.STRING, description: 'Proposed departure ISO timestamp' },
+          },
+          required: ['origin_station_id', 'destination_station_id'],
+        },
+      },
+      {
+        name: 'check_port_slot',
+        description: 'Check port berth and channel slot congestion for proposed voyage departure times.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            origin_port_id: { type: Type.STRING, description: 'Origin port UUID' },
+            destination_port_id: { type: Type.STRING, description: 'Destination port UUID' },
+            proposed_departure: { type: Type.STRING, description: 'Proposed departure ISO timestamp' },
+          },
+          required: ['origin_port_id', 'destination_port_id'],
+        },
+      },
+      {
+        name: 'list_unacknowledged_alerts',
+        description: 'List all active unacknowledged operational alerts across Roadways, Railways, Airways, and Seaways.',
+        parameters: { type: Type.OBJECT, properties: {} },
+      },
+      {
+        name: 'propose_acknowledge_alert',
+        description: 'Propose acknowledging a specific alert (requires explicit human confirmation before executing).',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            alert_id: { type: Type.STRING, description: 'The alert UUID to acknowledge' },
+            reason: { type: Type.STRING, description: 'Reason for acknowledging the alert' },
+          },
+          required: ['alert_id'],
+        },
+      },
+    ];
+  }
+
+  // -------------------------------------------------------------------------
+  // Main chat turn handler — Gemini with proper multi-turn tool calling
+  // -------------------------------------------------------------------------
+  async processChat(
+    orgId: string,
+    userId: string,
+    userRole: string,
+    req: AiChatRequest,
+  ): Promise<AiChatMessage> {
     const userMessage = req.message.trim();
+    const detectedLang = detectLanguage(userMessage);
     const toolCallsExecuted: AiToolCall[] = [];
     let proposedAction: AiProposedAction | null = null;
 
+    let fallbackReason = this.genAiClient ? 'GEMINI_RESPONSE_EMPTY' : 'GEMINI_API_KEY_MISSING';
+
     if (this.genAiClient) {
       try {
-        const tools: FunctionDeclaration[] = [
-          {
-            name: 'get_dashboard_stats',
-            description: 'Get live operational fleet stats for active vehicles, alerts count, speed, and trip departures.',
-            parameters: { type: Type.OBJECT, properties: {} },
-          },
-          {
-            name: 'list_active_trips',
-            description: 'List all currently in-transit or planned Roadways fleet shipments and manifests.',
-            parameters: { type: Type.OBJECT, properties: {} },
-          },
-          {
-            name: 'get_trip_details',
-            description: 'Get full operational intelligence for a specific Roadways trip ID including ETA confidence, carbon, and driver safety score.',
-            parameters: {
-              type: Type.OBJECT,
-              properties: {
-                trip_id: { type: Type.STRING, description: 'The unique trip UUID' },
-              },
-              required: ['trip_id'],
-            },
-          },
-          {
-            name: 'list_active_train_movements',
-            description: 'List all currently in-transit or planned Railways freight train movements, rakes, and locomotives.',
-            parameters: { type: Type.OBJECT, properties: {} },
-          },
-          {
-            name: 'get_train_movement_details',
-            description: 'Get full operational intelligence for a specific Railways train movement ID including ETA confidence, crew score, and rail carbon footprint.',
-            parameters: {
-              type: Type.OBJECT,
-              properties: {
-                movement_id: { type: Type.STRING, description: 'The unique train movement UUID' },
-              },
-              required: ['movement_id'],
-            },
-          },
-          {
-            name: 'list_active_flight_movements',
-            description: 'List all currently in-transit or planned Airways flight movements, aircraft, and pilots.',
-            parameters: { type: Type.OBJECT, properties: {} },
-          },
-          {
-            name: 'get_flight_movement_details',
-            description: 'Get full operational intelligence for a specific Airways flight movement ID including Great-Circle distance, ETA confidence, carbon, and pilot safety.',
-            parameters: {
-              type: Type.OBJECT,
-              properties: {
-                movement_id: { type: Type.STRING, description: 'The unique flight movement UUID' },
-              },
-              required: ['movement_id'],
-            },
-          },
-          {
-            name: 'list_active_voyage_movements',
-            description: 'List all currently in-transit or planned Seaways voyage movements, vessels, and ship masters.',
-            parameters: { type: Type.OBJECT, properties: {} },
-          },
-          {
-            name: 'get_voyage_movement_details',
-            description: 'Get full operational intelligence for a specific Seaways voyage movement ID including land-avoiding sea distance, ETA confidence, DWT-bucketed carbon, and master safety score.',
-            parameters: {
-              type: Type.OBJECT,
-              properties: {
-                movement_id: { type: Type.STRING, description: 'The unique voyage movement UUID' },
-              },
-              required: ['movement_id'],
-            },
-          },
-          {
-            name: 'check_rail_slot',
-            description: 'Check rail slot congestion on a specific station corridor for proposed departure times.',
-            parameters: {
-              type: Type.OBJECT,
-              properties: {
-                origin_station_id: { type: Type.STRING, description: 'Origin station UUID' },
-                destination_station_id: { type: Type.STRING, description: 'Destination station UUID' },
-                proposed_departure: { type: Type.STRING, description: 'Proposed departure ISO timestamp' },
-              },
-              required: ['origin_station_id', 'destination_station_id'],
-            },
-          },
-          {
-            name: 'check_port_slot',
-            description: 'Check port berth and channel slot congestion for proposed voyage departure times.',
-            parameters: {
-              type: Type.OBJECT,
-              properties: {
-                origin_port_id: { type: Type.STRING, description: 'Origin port UUID' },
-                destination_port_id: { type: Type.STRING, description: 'Destination port UUID' },
-                proposed_departure: { type: Type.STRING, description: 'Proposed departure ISO timestamp' },
-              },
-              required: ['origin_port_id', 'destination_port_id'],
-            },
-          },
-          {
-            name: 'list_unacknowledged_alerts',
-            description: 'List all active unacknowledged operational alerts across Roadways, Railways, Airways, and Seaways.',
-            parameters: { type: Type.OBJECT, properties: {} },
-          },
-          {
-            name: 'propose_acknowledge_alert',
-            description: 'Propose acknowledging an alert (requires explicit human confirmation before executing).',
-            parameters: {
-              type: Type.OBJECT,
-              properties: {
-                alert_id: { type: Type.STRING, description: 'The alert UUID to acknowledge' },
-                reason: { type: Type.STRING, description: 'Reason for acknowledging the alert' },
-              },
-              required: ['alert_id'],
-            },
-          },
-        ];
+        const tools = this.buildToolDeclarations();
 
-        // Format history
+        // Build a role-aware system instruction prefix
+        const rolePrefix =
+          userRole === 'driver'
+            ? `\n\nCURRENT USER ROLE: DRIVER (userId: ${userId}). You MUST only provide information about the driver's own assigned vehicle. Do NOT reveal other vehicles, other drivers, admin analytics, or any restricted organizational data. If asked about other vehicles, politely decline and explain drivers can only view their own assigned vehicle.`
+            : userRole === 'manager'
+            ? `\n\nCURRENT USER ROLE: MANAGER (userId: ${userId}). You have access to fleet and operational data within your authorized scope.`
+            : `\n\nCURRENT USER ROLE: ADMIN (userId: ${userId}). You have full access to all fleet, vehicle, driver, trip, alert, route, and analytics data.`;
+
+        const langNote =
+          detectedLang === 'tamil'
+            ? '\n\nLANGUAGE: User is writing in Tamil. Respond in clear, natural Tamil.'
+            : detectedLang === 'tanglish'
+            ? '\n\nLANGUAGE: User is writing in Tanglish. Respond in natural Tanglish or Tamil as appropriate.'
+            : '';
+
+        const systemInstruction = NEXUS_SYSTEM_INSTRUCTION + rolePrefix + langNote;
+
+        // Format conversation history
         const contents: any[] = (req.conversationHistory || []).map((h) => ({
           role: h.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: h.content }],
         }));
         contents.push({ role: 'user', parts: [{ text: userMessage }] });
 
-        const response = await this.genAiClient.models.generateContent({
-          model: this.modelName,
-          contents,
-          config: {
-            systemInstruction: NEXUS_SYSTEM_INSTRUCTION,
-            tools: [{ functionDeclarations: tools }],
-          },
-        });
+        // Model fallback chain: primary configured model + active Gemini 3 models on 404/503
+        const candidateModels = Array.from(
+          new Set([
+            this.modelName,
+            'gemini-3-flash-preview',
+            'gemini-3.8-flash',
+            'gemini-3.5-flash',
+            'gemini-3.1-flash-lite',
+          ]),
+        );
 
-        const candidate = response.candidates?.[0];
-        let assistantReply = response.text || '';
-
-        if (candidate?.content?.parts) {
-          for (const part of candidate.content.parts) {
-            // Handle tool function calls
-            if (part.functionCall) {
-              const call = part.functionCall;
-              const toolName = call.name;
-              const toolArgs = call.args || {};
-
-              if (toolName === 'propose_acknowledge_alert') {
-                const actionId = `action-${Date.now()}`;
-                const alertIdStr = String(toolArgs.alert_id || '');
-                proposedAction = {
-                  id: actionId,
-                  actionType: 'acknowledge_alert',
-                  description: `Acknowledge alert #${alertIdStr.substring(0, 8)} (${toolArgs.reason || 'Operational review'})`,
-                  payload: { alertId: alertIdStr },
-                  status: 'pending',
-                };
-                this.pendingActions.set(actionId, proposedAction);
-
-                toolCallsExecuted.push({
-                  name: toolName,
-                  args: toolArgs,
-                  result: { status: 'proposed_for_user_confirmation', actionId },
-                });
-              } else {
-                const result = await this.executeTool(orgId, toolName, toolArgs);
-                toolCallsExecuted.push({
-                  name: toolName,
-                  args: toolArgs,
-                  result,
-                });
-              }
+        let activeModel = candidateModels[0];
+        const callGemini = async (turnContents: any[], includeTools: boolean) => {
+          let lastErr: any;
+          for (const m of candidateModels) {
+            try {
+              const res = await this.genAiClient!.models.generateContent({
+                model: m,
+                contents: turnContents,
+                config: includeTools
+                  ? { systemInstruction, tools: [{ functionDeclarations: tools }] }
+                  : { systemInstruction },
+              });
+              activeModel = m;
+              return res;
+            } catch (err: any) {
+              lastErr = err;
+              const msg = String(err?.message || '');
+              const status = err?.status || err?.code;
+              const retryable =
+                status === 404 ||
+                status === 503 ||
+                msg.includes('404') ||
+                msg.includes('503') ||
+                msg.includes('NOT_FOUND') ||
+                msg.includes('UNAVAILABLE');
+              if (!retryable) throw err;
+              this.logger.warn(`Gemini model ${m} unavailable (${status || 'err'}), trying next model...`);
             }
+          }
+          throw lastErr;
+        };
+
+        // Multi-step tool calling loop (up to 3 rounds), preserving full candidate.content (incl. thoughtSignature)
+        let workingContents = [...contents];
+        let assistantReply = '';
+
+        for (let round = 0; round < 3; round++) {
+          const response = await callGemini(workingContents, true);
+          const candidate = response.candidates?.[0];
+          const parts = candidate?.content?.parts || [];
+          const functionCallParts = parts.filter((p: any) => p.functionCall);
+
+          if (functionCallParts.length === 0) {
+            assistantReply = response.text || '';
+            break;
+          }
+
+          // Append the model's exact content (preserving thoughtSignature)
+          workingContents.push(
+            candidate?.content || { role: 'model', parts: functionCallParts },
+          );
+
+          const functionResponseParts: any[] = [];
+          for (const part of functionCallParts) {
+            const call = part.functionCall;
+            const toolName = call.name as string;
+            const toolArgs = call.args || {};
+
+            if (toolName === 'propose_acknowledge_alert') {
+              if (userRole === 'driver') {
+                const denied = { error: 'Access denied: Drivers cannot acknowledge organization alerts.' };
+                toolCallsExecuted.push({ name: toolName, args: toolArgs, result: denied });
+                functionResponseParts.push({
+                  functionResponse: { name: toolName, response: denied },
+                });
+                continue;
+              }
+              const actionId = `action-${Date.now()}`;
+              const alertIdStr = String(toolArgs.alert_id || '');
+              const isTwinAlert = alertIdStr.startsWith('twin-alert-');
+              let twinMeta: { vehicleId?: string; eventType?: string; registration?: string } = {};
+              if (isTwinAlert) {
+                const match = alertIdStr.match(/^twin-alert-(.+)-(\d+)$/);
+                if (match) {
+                  twinMeta.vehicleId = match[1];
+                }
+                try {
+                  const ov = await this.fleetTwinService.getOverview();
+                  const found = (ov?.alerts || []).find(
+                    (a, idx) => `twin-alert-${a.vehicle_id}-${idx}` === alertIdStr || a.vehicle_id === twinMeta.vehicleId,
+                  );
+                  if (found) {
+                    twinMeta = {
+                      vehicleId: found.vehicle_id,
+                      eventType: found.event_type,
+                      registration: found.registration_number,
+                    };
+                  }
+                } catch {
+                  // fallback to parsed vehicleId
+                }
+              }
+
+              proposedAction = {
+                id: actionId,
+                actionType: 'acknowledge_alert',
+                description: twinMeta.registration
+                  ? `Acknowledge Digital Twin alert for ${twinMeta.registration} (${toolArgs.reason || 'Operational review'})`
+                  : `Acknowledge alert #${alertIdStr.substring(0, 8)} (${toolArgs.reason || 'Operational review'})`,
+                payload: {
+                  alertId: alertIdStr,
+                  alertSource: isTwinAlert ? 'fleet_twin' : 'db_alert',
+                  vehicleId: twinMeta.vehicleId,
+                  registration: twinMeta.registration,
+                  eventType: twinMeta.eventType,
+                  reason: toolArgs.reason ? String(toolArgs.reason) : undefined,
+                },
+                status: 'pending',
+              };
+              this.pendingActions.set(actionId, proposedAction);
+
+              const propResult = { status: 'proposed_for_user_confirmation', actionId };
+              toolCallsExecuted.push({ name: toolName, args: toolArgs, result: propResult });
+              functionResponseParts.push({
+                functionResponse: { name: toolName, response: propResult },
+              });
+            } else {
+              const result = await this.executeTool(orgId, userId, userRole, toolName, toolArgs);
+              toolCallsExecuted.push({ name: toolName, args: toolArgs, result });
+              functionResponseParts.push({
+                functionResponse: { name: toolName, response: result },
+              });
+            }
+          }
+
+          workingContents.push({ role: 'user', parts: functionResponseParts });
+
+          // If this was the last round, do a final synthesis without tools
+          if (round === 2) {
+            const finalResp = await callGemini(workingContents, false);
+            assistantReply = finalResp.text || '';
           }
         }
 
-        // If tool calls were made, perform synthesis turn so Gemini explains the data
-        if (toolCallsExecuted.length > 0 && !assistantReply.trim()) {
-          const followUp = await this.genAiClient.models.generateContent({
-            model: this.modelName,
-            contents: [
-              ...contents,
-              {
-                role: 'model',
-                parts: toolCallsExecuted.map((tc) => ({
-                  text: `Executed tool ${tc.name}: ${JSON.stringify(tc.result)}`,
-                })),
-              },
-              {
-                role: 'user',
-                parts: [{ text: 'Please synthesize and summarize the above tool findings clearly for the operator.' }],
-              },
-            ],
-            config: {
-              systemInstruction: NEXUS_SYSTEM_INSTRUCTION,
-            },
-          });
-          assistantReply = followUp.text || 'Operational data retrieved successfully.';
-        }
-
         if (assistantReply.trim()) {
+          this.logger.debug(`Gemini response generated via ${activeModel} (${toolCallsExecuted.length} tool calls)`);
           return {
             id: `msg-${Date.now()}`,
             role: 'assistant',
@@ -557,294 +1380,382 @@ export class AiService {
             toolCalls: toolCallsExecuted.length > 0 ? toolCallsExecuted : undefined,
             proposedAction,
             isFallback: false,
+            detectedLanguage: detectedLang,
             createdAt: new Date().toISOString(),
           };
         }
       } catch (geminiError: any) {
-        this.logger.warn(`Gemini API call failed (${geminiError.message}). Using context-aware fallback.`);
+        const msg = String(geminiError?.message || '');
+        if (msg.includes('429') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('rate')) {
+          fallbackReason = 'RATE_LIMIT';
+        } else if (msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('etimedout')) {
+          fallbackReason = 'TIMEOUT';
+        } else {
+          fallbackReason = 'MODEL_ERROR';
+        }
+        this.logger.warn(`Gemini API call failed (${fallbackReason}): ${msg}. Using context-aware fallback.`);
       }
     }
 
     // Context-Aware Fallback Responder
-    return this.processFallbackChat(orgId, userMessage);
+    return this.processFallbackChat(orgId, userId, userRole, userMessage, detectedLang, fallbackReason);
   }
 
-  /**
-   * Deterministic, context-aware fallback when Gemini API key is absent or network fails.
-   */
-  async processFallbackChat(orgId: string, message: string): Promise<AiChatMessage> {
+  // -------------------------------------------------------------------------
+  // Context-aware fallback (no Gemini API)
+  // -------------------------------------------------------------------------
+  async processFallbackChat(
+    orgId: string,
+    userId: string,
+    userRole: string,
+    message: string,
+    detectedLang: 'tamil' | 'tanglish' | 'english' = 'english',
+    fallbackReason: string = 'GEMINI_API_KEY_MISSING',
+  ): Promise<AiChatMessage> {
     const lower = message.toLowerCase();
     const toolCallsExecuted: AiToolCall[] = [];
     let proposedAction: AiProposedAction | null = null;
     let replyText = '';
 
-    // 1. Seaways-Specific Operational Inquiries (Vessels, Voyages, Ships, Ports, Maritime Carbon, STCW)
-    if (
-      lower.includes('voyage') ||
-      lower.includes('vessel') ||
-      lower.includes('ship') ||
-      lower.includes('seaways') ||
-      lower.includes('port') ||
-      lower.includes('berth') ||
-      lower.includes('stcw') ||
-      lower.includes('watchkeeping')
+    // Helper to execute tools in fallback
+    const runTool = async (name: string, args: any = {}) => {
+      const result = await this.executeTool(orgId, userId, userRole, name, args);
+      toolCallsExecuted.push({ name, args, result });
+      return result;
+    };
+
+    // Check for specific Indian vehicle registration pattern (e.g. TN 01 AB 4021 or TN01AB4021)
+    const regMatch = message.match(/\b([A-Z]{2}\s*\d{1,2}\s*[A-Z]{1,3}\s*\d{3,4})\b/i);
+
+    if (regMatch) {
+      const twin = await runTool('get_vehicle_digital_twin', { vehicle_id: regMatch[1] });
+      if (twin.error) {
+        replyText = twin.error;
+      } else {
+        replyText =
+          `**Vehicle:** ${twin.registration} (${twin.status?.toUpperCase()})\n` +
+          `**Location:** ${twin.currentLocation?.lat?.toFixed(4)}, ${twin.currentLocation?.lng?.toFixed(4)} (${twin.currentCheckpoint || 'En Route'})\n` +
+          `**Speed:** ${twin.speedKmh} km/h | **Progress:** ${twin.progressPct}%\n` +
+          `**Route:** ${twin.originCity} → ${twin.destinationCity}\n` +
+          `**Planned ETA:** ${twin.plannedEta}\n` +
+          `**Predicted ETA:** ${twin.predictedEta} (Delay: +${twin.delayMinutes} min)\n` +
+          `**Risk Score:** ${twin.riskScore}/100\n` +
+          `**Main Causes:** ${(twin.topDelayCauses || []).join(', ') || 'None reported'}\n` +
+          (twin.activeReroute
+            ? `**Recommended Alternate Route:** ${twin.activeReroute.recommendedRoute} (saves ${twin.activeReroute.timeSavedMinutes} min)`
+            : '');
+      }
+    } else if (lower.includes('highest risk') || lower.includes('risk')) {
+      const overview = await runTool('get_fleet_twin_overview', {});
+      if (overview.error) {
+        replyText = overview.error;
+      } else {
+        const sorted = [...(overview.vehicles || [])].sort(
+          (a: any, b: any) => (b.riskScore || 0) - (a.riskScore || 0),
+        );
+        const top = sorted[0];
+        replyText = top
+          ? `Highest-risk vehicle is **${top.registration}** (Risk Score: **${top.riskScore}/100**, Status: ${top.status}, Delay: +${top.delayMinutes} min, Next Checkpoint: ${top.nextCheckpoint || 'N/A'}).\n\n` +
+            sorted
+              .slice(0, 5)
+              .map((v: any, i: number) => `${i + 1}. ${v.registration} — Risk ${v.riskScore}/100, ${v.status}, ${v.speedKmh} km/h`)
+              .join('\n')
+          : 'No active fleet vehicles found.';
+      }
+    } else if (lower.includes('fleet twin') || lower.includes('fleet overview') || lower.includes('digital twin') ||
+        lower.includes('fleet status') || lower.includes('all vehicle') || lower.includes('active vehicle') ||
+        lower.includes('how many fleet') || lower.includes('moving')) {
+      const overview = await runTool('get_fleet_twin_overview', {});
+      replyText =
+        `Fleet Twin Overview (LIVE):\n` +
+        `• Total Fleet: ${overview.totalFleet} vehicles\n` +
+        `• Active: ${overview.activeVehicles} | Avg Speed: ${overview.averageSpeedKmh} km/h\n` +
+        `• Active Alerts: ${overview.activeAlerts} | Arrived Today: ${overview.arrivedToday}\n\n`;
+      if (overview.vehicles && overview.vehicles.length > 0) {
+        replyText += overview.vehicles
+          .slice(0, 8)
+          .map(
+            (v: any) =>
+              `${v.registration} (${v.status}) — Speed: ${v.speedKmh} km/h, Progress: ${v.progressPct}%, Risk: ${v.riskScore}, Next: ${v.nextCheckpoint || 'N/A'}, ETA Delay: ${v.delayMinutes}min`,
+          )
+          .join('\n');
+      }
+    } else if (
+      lower.includes('voyage') || lower.includes('vessel') || lower.includes('ship') ||
+      lower.includes('seaways') || lower.includes('port') || lower.includes('berth') ||
+      lower.includes('stcw') || lower.includes('watchkeeping')
     ) {
       if (lower.includes('stcw') || lower.includes('watchkeeping') || lower.includes('rest hour')) {
         replyText =
-          `IMO STCW Watchkeeping & Rest-Hour Compliance Module (STCW Reg VIII/1 & Code Sec A-VIII/1 / MLC 2006):\n\n` +
-          `• Minimum Daily Rest: 10 hours (600 minutes) in any 24-hour period (maximum allowable duty period: 14 hours / 840 minutes).\n` +
+          `IMO STCW Watchkeeping & Rest-Hour Compliance Module:\n\n` +
+          `• Minimum Daily Rest: 10 hours in any 24-hour period (max duty: 14 hours).\n` +
           `• Weekly Rest: Minimum 77 hours in any 7-day period.\n` +
-          `• Rest Division: Divided into no more than two periods, one of which must be at least 6 hours.\n` +
-          `• Compliance Auditing: Automatically audits master/watchkeeping logs on voyage completion and flags critical safety breaches.`;
+          `• Rest Division: No more than two periods, one of which must be at least 6 hours.`;
       } else {
-        const voyages = await this.executeTool(orgId, 'list_active_voyage_movements', {});
-        toolCallsExecuted.push({
-          name: 'list_active_voyage_movements',
-          args: {},
-          result: voyages,
-        });
-
+        const voyages = await runTool('list_active_voyage_movements', {});
         replyText =
           voyages.length > 0
-            ? `Found ${voyages.length} active/planned voyage movement(s) on the seaways network:\n` +
-              voyages
-                .map(
-                  (v: any, i: number) =>
-                    `${i + 1}. Voyage ${v.voyageNumber || 'N/A'} (${v.vessel || 'Vessel'}, ${v.dwtTonnes ? `${v.dwtTonnes.toLocaleString()} DWT` : 'Panamax'}): ${v.originPort} → ${v.destinationPort} (${v.status}, ~${v.distanceKm || 0} km, Master: ${v.master || 'N/A'})`,
-                )
-                .join('\n')
-            : 'No active voyage movements are currently in transit. Use "Dispatch Voyage" to schedule a new open-water sea route.';
+            ? `Found ${voyages.length} active/planned voyage movement(s):\n` +
+              voyages.map((v: any, i: number) =>
+                `${i + 1}. ${v.voyageNumber || 'N/A'} — ${v.vessel}: ${v.originPort} → ${v.destinationPort} (${v.status})`,
+              ).join('\n')
+            : 'No active voyage movements. Use "Dispatch Voyage" to schedule.';
       }
-    }
-    // 2. Airways-Specific Operational Inquiries (Flights, Aircraft, Pilot Crew, Air Carbon, FDTL)
-    else if (
-      lower.includes('flight') ||
-      lower.includes('aircraft') ||
-      lower.includes('airplane') ||
-      lower.includes('pilot') ||
-      lower.includes('airways') ||
-      lower.includes('airport') ||
-      lower.includes('fdtl')
+    } else if (
+      lower.includes('flight') || lower.includes('aircraft') || lower.includes('pilot') ||
+      lower.includes('airways') || lower.includes('airport') || lower.includes('fdtl')
     ) {
-      if (lower.includes('fdtl') || lower.includes('flight duty') || lower.includes('duty time')) {
+      if (lower.includes('fdtl') || lower.includes('flight duty')) {
         replyText =
-          `DGCA India Flight Duty Time Limitations (FDTL) Module (CAR Section 7 Series J):\n\n` +
-          `• Maximum Flight Duty Period (FDP): 13 hours (780 minutes) within any rolling 24-hour window for two-pilot operations.\n` +
-          `• Maximum Flight Time: 8 hours (480 minutes) in a 24-hour window.\n` +
-          `• Compliance Auditing: Automatically logs duty hours on flight completion and raises critical safety violations if limits are exceeded.`;
+          `DGCA FDTL Module (CAR Section 7 Series J):\n\n` +
+          `• Max Flight Duty Period: 13 hours in any 24-hour window.\n` +
+          `• Max Flight Time: 8 hours in a 24-hour window.`;
       } else {
-        const flights = await this.executeTool(orgId, 'list_active_flight_movements', {});
-        toolCallsExecuted.push({
-          name: 'list_active_flight_movements',
-          args: {},
-          result: flights,
-        });
-
+        const flights = await runTool('list_active_flight_movements', {});
         replyText =
           flights.length > 0
-            ? `Found ${flights.length} active/planned flight movement(s) on the airways network:\n` +
-              flights
-                .map(
-                  (f: any, i: number) =>
-                    `${i + 1}. Flight ${f.flightNumber || 'N/A'} (${f.aircraft || 'Air Cargo'}): ${f.originAirport} → ${f.destinationAirport} (${f.status}, ~${f.distanceKm || 0} km, Pilot: ${f.pilot || 'N/A'})`,
-                )
-                .join('\n')
-            : 'No active flight movements are currently in transit. Use "Dispatch Flight" to schedule a new movement.';
+            ? `Found ${flights.length} active/planned flight movement(s):\n` +
+              flights.map((f: any, i: number) =>
+                `${i + 1}. ${f.flightNumber || 'N/A'} — ${f.aircraft}: ${f.originAirport} → ${f.destinationAirport} (${f.status})`,
+              ).join('\n')
+            : 'No active flight movements. Use "Dispatch Flight" to schedule.';
       }
-    }
-    // 3. Railways-Specific Operational Inquiries (Train Movements, Rakes, Loco Pilots, Slot Intelligence)
-    else if (
-      lower.includes('train') ||
-      lower.includes('rail') ||
-      lower.includes('rake') ||
-      lower.includes('loco') ||
-      lower.includes('locomotive') ||
-      lower.includes('station')
+    } else if (
+      lower.includes('train') || lower.includes('rail') || lower.includes('rake') ||
+      lower.includes('loco') || lower.includes('station')
     ) {
-      if (lower.includes('slot') || lower.includes('congestion') || lower.includes('capacity')) {
-        replyText =
-          `Rail Slot Intelligence Module:\n\n` +
-          `• Corridor Capacity Evaluation: Analyzes planned and active train movements within a ±2 hour search window on the specified rail route.\n` +
-          `• Bottleneck Detection: Flags corridor congestion when overlapping departures exceed threshold capacity.\n` +
-          `• Suggested Departure: Recommends the earliest clear line window (e.g. +3 hours) to prevent track holds.`;
-      } else {
-        const movements = await this.executeTool(orgId, 'list_active_train_movements', {});
-        toolCallsExecuted.push({
-          name: 'list_active_train_movements',
-          args: {},
-          result: movements,
-        });
-
-        replyText =
-          movements.length > 0
-            ? `Found ${movements.length} active/planned train movement(s) on the rail network:\n` +
-              movements
-                .map(
-                  (m: any, i: number) =>
-                    `${i + 1}. Train ${m.trainNumber || 'N/A'} (${m.locoFuelType || 'Electric'}): ${m.originStation} → ${m.destinationStation} (${m.status}, ~${m.distanceKm || 0} km, Pilot: ${m.locoPilot || 'N/A'})`,
-                )
-                .join('\n')
-            : 'No active freight train movements are currently on the rail network. Use "Dispatch Train" to schedule a new movement.';
-      }
-    }
-    // 4. General & Conceptual Questions (Workflows, Platform Capabilities, Digital Twin)
-    else if (
-      lower.includes('workflow') ||
-      lower.includes('what can you do') ||
-      lower.includes('capabilities') ||
-      lower.includes('what is nexus') ||
-      lower.includes('digital twin') ||
-      lower.includes('multimodal') ||
-      lower.includes('predictive eta') ||
-      lower.includes('how does')
+      const movements = await runTool('list_active_train_movements', {});
+      replyText =
+        movements.length > 0
+          ? `Found ${movements.length} active/planned train movement(s):\n` +
+            movements.map((m: any, i: number) =>
+              `${i + 1}. Train ${m.trainNumber || 'N/A'}: ${m.originStation} → ${m.destinationStation} (${m.status})`,
+            ).join('\n')
+          : 'No active train movements. Use "Dispatch Train" to schedule.';
+    } else if (
+      lower.includes('alert') || lower.includes('warning') || lower.includes('incident') ||
+      lower.includes('hos') || lower.includes('geofence')
     ) {
-      if (lower.includes('digital twin')) {
-        replyText =
-          `The NEXUS WAYS Digital Twin generates a live 'ghost' projection representing the ideal predicted schedule along the route geometry.\n\n` +
-          `• Schedule Deviation: Continuously compares real simulated GPS/telemetry points against the ghost position to compute minute-level schedule variance (ahead/behind).\n` +
-          `• Map Visualization: Renders a distinctive dashed cyan ghost marker with live status indicators across Roadways, Railways, Airways, and Seaways.\n` +
-          `• Congestion Impact: When real simulated speed holds or sea lane cautions occur, the deviation updates in real-time.`;
-      } else if (lower.includes('workflow') || lower.includes('what can you do') || lower.includes('capabilities')) {
-        replyText =
-          `I can assist with several NEXUS WAYS operational workflows across your multimodal network:\n\n` +
-          `• Fleet, Train, Flight & Vessel Tracking: Real-time telemetry monitoring, heading/speed tracking, and status updates across Roadways, Railways, Airways & Seaways.\n` +
-          `• Predictive ETA & Confidence: Dynamic arrival estimation with historical sample variance bands (±15% default or sample stddev).\n` +
-          `• Driver, Pilot & Master Safety Scoring: Automated evaluation of harsh maneuvers and overspeeding (Road limit: 80 km/h; Rail: 100 km/h; Air: 250 kts below 10k ft; Sea: ROT > 20°/min per IMO Res A.526(13)).\n` +
-          `• Environmental & Slot Intelligence: GLEC Framework carbon emission calculations (Sea Panamax: 0.0084 kg/t-km; Rail: 0.0106 kg/t-km; Road: 0.101 kg/t-km; Air: 0.608 kg/t-km) and Slot Intelligence checks.\n` +
-          `• Regulatory Compliance: Geofencing boundary monitoring, MTWA HOS rules, DGCA India FDTL limits, and IMO STCW Section A-VIII/1 watchkeeping rules.\n` +
-          `• Disruption Response: Alert triage and proposed operational acknowledgements.`;
-      } else if (lower.includes('what is nexus') || lower.includes('multimodal')) {
-        replyText =
-          `NEXUS WAYS is a unified Multimodal Logistics Intelligence Platform providing end-to-end operational visibility across Roadways, Railways, Airways, and Seaways.\n\n` +
-          `It combines route optimization, live telemetry simulation, digital twin schedule tracking, and automated regulatory safety compliance into a single operational interface.`;
-      } else {
-        replyText =
-          `NEXUS WAYS provides integrated multimodal logistics operations, route planning with OSRM, Overpass, Great-Circle and Searoute open-water calculations, safety scoring, carbon/slot calculation, and digital-twin ghost tracking.`;
-      }
-    }
-    // 5. Specific Operational Inquiries: Alerts & Incidents
-    else if (lower.includes('alert') || lower.includes('warning') || lower.includes('incident') || lower.includes('hos') || lower.includes('geofence')) {
-      const alerts = await this.executeTool(orgId, 'list_unacknowledged_alerts', {});
-      toolCallsExecuted.push({
-        name: 'list_unacknowledged_alerts',
-        args: {},
-        result: alerts,
-      });
-
+      const alerts = await runTool('list_unacknowledged_alerts', {});
       if (lower.includes('ack') || lower.includes('dismiss') || lower.includes('clear')) {
         const firstAlert = alerts[0];
         if (firstAlert) {
           const actionId = `action-${Date.now()}`;
+          const isTwinAlert = firstAlert.alertSource === 'fleet_twin' || String(firstAlert.id).startsWith('twin-alert-');
           proposedAction = {
             id: actionId,
             actionType: 'acknowledge_alert',
-            description: `Acknowledge alert #${firstAlert.id.substring(0, 8)} (${firstAlert.type} - ${firstAlert.message.substring(0, 40)}...)`,
-            payload: { alertId: firstAlert.id },
+            description: `Acknowledge alert #${String(firstAlert.id).substring(0, 8)} (${firstAlert.type} - ${firstAlert.message.substring(0, 40)}...)`,
+            payload: {
+              alertId: firstAlert.id,
+              alertSource: isTwinAlert ? 'fleet_twin' : 'db_alert',
+              vehicleId: firstAlert.vehicleId,
+              registration: firstAlert.registration,
+              eventType: firstAlert.eventType || firstAlert.type,
+            },
             status: 'pending',
           };
           this.pendingActions.set(actionId, proposedAction);
-          replyText = `Found active alert #${firstAlert.id.substring(0, 8)}: "${firstAlert.message}". I have prepared a proposed action for you to confirm.`;
+          replyText = `Found alert: "${firstAlert.message}". Prepared action for confirmation.`;
         } else {
-          replyText = 'There are no active unacknowledged alerts to acknowledge.';
+          replyText = 'No active alerts to acknowledge.';
         }
       } else {
         replyText =
           alerts.length > 0
-            ? `There are currently ${alerts.length} unacknowledged operational alert(s):\n` +
-              alerts.map((a: any, i: number) => `${i + 1}. [${a.severity.toUpperCase()}] ${a.message}`).join('\n')
-            : 'All operational alerts are clear. No active unacknowledged alerts found.';
+            ? `${alerts.length} unacknowledged alert(s):\n` +
+              alerts.map((a: any, i: number) => `${i + 1}. [${a.severity?.toUpperCase()}] ${a.message}`).join('\n')
+            : 'All operational alerts are clear.';
       }
-    }
-    // 6. Specific Operational Inquiries: Road Trips & Shipments
-    else if (lower.includes('trip') || lower.includes('route') || lower.includes('manifest') || lower.includes('shipment') || lower.includes('delayed')) {
-      const trips = await this.executeTool(orgId, 'list_active_trips', {});
-      toolCallsExecuted.push({
-        name: 'list_active_trips',
-        args: {},
-        result: trips,
-      });
-
+    } else if (
+      lower.includes('trip') || lower.includes('manifest') || lower.includes('shipment') || lower.includes('delayed')
+    ) {
+      const trips = await runTool('list_active_trips', {});
+      if (trips && !Array.isArray(trips) && trips.error) {
+        replyText = `I couldn't retrieve active trips: ${trips.error}`;
+      } else {
+        const filtered = lower.includes('delayed')
+          ? trips.filter((t: any) => t.status === 'delayed' || (t.delayMinutes || 0) > 0)
+          : trips;
+        replyText =
+          filtered.length > 0
+            ? `Found ${filtered.length} active/planned trip(s):\n` +
+              filtered
+                .map(
+                  (t: any, i: number) =>
+                    `${i + 1}. **${t.vehicle || 'N/A'}**: ${t.origin} → ${t.destination} (${t.status}${
+                      t.speedKmh !== undefined ? `, ${t.speedKmh} km/h` : ''
+                    }${t.delayMinutes ? `, +${t.delayMinutes}m delay` : ''})`,
+                )
+                .join('\n')
+            : 'There are currently no active trips.';
+      }
+    } else if (
+      lower.includes('fleet') || lower.includes('status') || lower.includes('speed') ||
+      lower.includes('stats') || lower.includes('summary')
+    ) {
+      const stats = await runTool('get_dashboard_stats', {});
+      if (stats.error) {
+        replyText = stats.error;
+      } else {
+        replyText =
+          `Operational Fleet Summary (${stats.dataFreshness || 'LIVE'}):\n` +
+          `• Active Vehicles: ${stats.activeVehicles} of ${stats.totalFleet}\n` +
+          `• Active Alerts: ${stats.activeAlerts}\n` +
+          `• Average Speed: ${stats.avgSpeedKmh} km/h\n` +
+          `• Completed Today: ${stats.arrivedCount} | Departed Today: ${stats.departedCount}`;
+      }
+    } else if (lower.includes('digital twin') || lower.includes('what can you do') || lower.includes('capabilities')) {
       replyText =
-        trips.length > 0
-          ? `Found ${trips.length} active/planned trip(s) in the fleet:\n` +
-            trips
-              .map(
-                (t: any, i: number) =>
-                  `${i + 1}. Vehicle ${t.vehicle || 'N/A'}: ${t.origin} → ${t.destination} (${t.status}, ~${t.distanceKm || 0} km)`,
-              )
-              .join('\n')
-          : 'No road trips are currently in transit. Use "Dispatch Trip" to initiate a new route manifest.';
-    }
-    // 7. Specific Operational Inquiries: Fleet Statistics & Summary
-    else if (lower.includes('fleet') || lower.includes('status') || lower.includes('speed') || lower.includes('stats') || lower.includes('summary')) {
-      const stats = await this.executeTool(orgId, 'get_dashboard_stats', {});
-      toolCallsExecuted.push({
-        name: 'get_dashboard_stats',
-        args: {},
-        result: stats,
-      });
-
-      replyText = `Operational Fleet Summary:\n- Active Vehicles: ${stats.activeVehicles}\n- Total Fleet Units: ${stats.totalFleet}\n- Active Alerts: ${stats.activeAlerts}\n- Average Speed: ${stats.avgSpeedKmh} km/h\n- Completed Today: ${stats.arrivedCount} trip(s).`;
-    }
-    // 8. Predictive & Weather Logistics Questions
-    else if (lower.includes('weather') || lower.includes('predict') || lower.includes('disruption') || lower.includes('risk')) {
+        `I am your NEXUS WAYS Operations Copilot. You can ask me:\n` +
+        `• 🚛 Fleet twin status, vehicle location, speed, ETA, delay analysis\n` +
+        `• ⚠️ Active alerts and risk scores\n` +
+        `• 🛤️ Checkpoint status and alternate route recommendations\n` +
+        `• 🚂 Train movements and rail slot intelligence\n` +
+        `• ✈️ Flight movements and FDTL compliance\n` +
+        `• 🚢 Voyage movements and STCW watchkeeping\n` +
+        `• 🌧️ Weather, traffic, toll predictions via Digital Twin\n\n` +
+        `Ask in English, Tamil, or Tanglish!`;
+    } else {
       replyText =
-        `Predictive Logistics & Risk Monitoring:\n\n` +
-        `• Weather & Route Conditions: Extreme weather events, marine swells, and localized corridor congestion are tracked against scheduled transit corridors.\n` +
-        `• Disruption Detection: Ghost projections identify schedule slippage early to allow route diversion or relief crew dispatch.\n` +
-        `• Multimodal Coordination: Planned rail/air/sea transfers can be rescheduled when upstream legs experience variance.`;
-    }
-    // 9. Default Helpful Fallback
-    else {
-      replyText =
-        `I am your NEXUS WAYS Operations Copilot. You can ask me to:\n` +
-        `• Check fleet, train, flight, or vessel status ("List active voyage movements", "List active flight movements", "List active train movements" or "What is our fleet status?")\n` +
-        `• Inspect operational alerts or acknowledge incidents ("Show active alerts")\n` +
-        `• Review active trips/movements and ETA predictions ("List active voyage movements")\n` +
-        `• Check port berth capacity or airport slot congestion ("Explain slot intelligence")\n` +
-        `• Explain platform capabilities and digital twin intelligence ("How does digital twin work?")`;
+        `I am your NEXUS WAYS Operations Copilot. Ask about fleet status, vehicle location, delays, alerts, routes, or any multimodal logistics operation.\n\n` +
+        `Examples: "Show fleet overview", "Where is TN 01 AB 4021?", "What are active alerts?", "List active flights"`;
     }
 
     return {
       id: `fallback-${Date.now()}`,
       role: 'assistant',
-      content: `[Rule-Based Assistant Fallback Mode]\n${replyText}`,
+      content: `[Rule-Based Assistant Fallback Mode — ${fallbackReason}]\n${replyText}`,
       toolCalls: toolCallsExecuted.length > 0 ? toolCallsExecuted : undefined,
       proposedAction,
       isFallback: true,
+      fallbackReason,
+      detectedLanguage: detectedLang,
       createdAt: new Date().toISOString(),
     };
   }
 
-  /**
-   * Confirms and applies a proposed write action (e.g. acknowledge_alert).
-   */
-  async confirmAction(orgId: string, req: AiConfirmActionRequest): Promise<{ success: boolean; message: string }> {
+  // -------------------------------------------------------------------------
+  // Confirm and apply a proposed write action (e.g. acknowledge_alert)
+  // -------------------------------------------------------------------------
+  async confirmAction(
+    orgId: string,
+    req: AiConfirmActionRequest,
+    userRole: string = 'admin',
+    userId?: string,
+  ): Promise<{ success: boolean; message: string; alertSource?: string; deduplicated?: boolean }> {
+    if (userRole === 'driver') {
+      throw new ForbiddenException('Drivers are not authorized to confirm organization actions');
+    }
+
+    // Idempotency & duplicate-click protection
+    if (req.actionId) {
+      const completed = this.completedActions.get(req.actionId);
+      if (completed) {
+        return { ...completed, deduplicated: true };
+      }
+      if (this.processingActions.has(req.actionId)) {
+        throw new BadRequestException('This action is already being processed.');
+      }
+    }
+
     if (!req.confirmed) {
       this.pendingActions.delete(req.actionId);
-      return { success: true, message: 'Proposed action was rejected and cancelled.' };
+      const res = { success: true, message: 'Proposed action was rejected and cancelled.' };
+      if (req.actionId) this.completedActions.set(req.actionId, res);
+      return res;
     }
 
-    if (req.actionType === 'acknowledge_alert') {
-      const alertId = req.payload?.alertId;
-      if (!alertId) {
-        throw new BadRequestException('alertId is required to acknowledge alert');
+    if (req.actionId) this.processingActions.add(req.actionId);
+
+    try {
+      if (req.actionType === 'acknowledge_alert') {
+        // Prefer server-side verified pending action payload when available
+        const serverPending = req.actionId ? this.pendingActions.get(req.actionId) : undefined;
+        const effectivePayload = serverPending?.payload || req.payload || {};
+
+        const alertId = String(effectivePayload.alertId || '').trim();
+        if (!alertId) {
+          throw new BadRequestException('alertId is required to acknowledge alert');
+        }
+
+        const isTwinAlert =
+          effectivePayload.alertSource === 'fleet_twin' ||
+          alertId.startsWith('twin-alert-');
+
+        if (isTwinAlert) {
+          const parsedMatch = alertId.match(/^twin-alert-(.+)-(\d+)$/);
+          const vehicleId = effectivePayload.vehicleId || parsedMatch?.[1];
+          const eventType = effectivePayload.eventType;
+          const registration = effectivePayload.registration;
+
+          this.fleetTwinService.acknowledgeTwinAlert(alertId, {
+            vehicleId,
+            eventType,
+            acknowledgedBy: userId,
+            reason: effectivePayload.reason,
+          });
+
+          // Optional non-blocking audit log in alerts table using Postgres gen_random_uuid() (never passing twin-alert string as uuid!)
+          try {
+            await this.supabase.adminClient.from('alerts').insert({
+              org_id: orgId,
+              type: eventType ? `twin_${eventType}` : 'digital_twin_ack',
+              severity: 'medium',
+              message: `Acknowledged Digital Twin alert (${alertId})${registration ? ` for ${registration}` : ''}`,
+              acknowledged_at: new Date().toISOString(),
+            });
+          } catch {
+            // Audit insert is best-effort; twin acknowledgement already succeeded
+          }
+
+          this.pendingActions.delete(req.actionId);
+          const res = {
+            success: true,
+            alertSource: 'fleet_twin',
+            message: registration
+              ? `Digital Twin alert for ${registration} successfully acknowledged.`
+              : `Digital Twin alert (${alertId}) successfully acknowledged.`,
+          };
+          if (req.actionId) this.completedActions.set(req.actionId, res);
+          return res;
+        }
+
+        // Persistent DB alert: strictly validate UUID before querying Postgres uuid column
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        // Allow test-style IDs like 'alert-456' ONLY when running in unit tests? No — validate UUID in production,
+        // wait: existing unit test ai.service.spec.ts uses payload: { alertId: 'alert-456' }!
+        // Let's check: if it contains 'twin-alert-' we handled it above. For DB alerts, reject obviously malformed non-UUIDs ONLY if not a simple test mock, OR check DB existence first.
+        // Better: validate UUID OR let's update our unit test to use a real UUID! Wait — let's check if any OTHER test in the repo passes 'alert-456'.
+        if (!uuidRegex.test(alertId)) {
+          throw new BadRequestException(
+            `Invalid persistent alert identifier "${alertId}". Expected a valid UUID.`,
+          );
+        }
+
+        const { error } = await this.supabase.adminClient
+          .from('alerts')
+          .update({ acknowledged_at: new Date().toISOString() })
+          .eq('org_id', orgId)
+          .eq('id', alertId);
+
+        if (error) {
+          throw new BadRequestException(`Failed to acknowledge alert: ${error.message}`);
+        }
+
+        this.pendingActions.delete(req.actionId);
+        const res = {
+          success: true,
+          alertSource: 'db_alert',
+          message: `Alert #${alertId.substring(0, 8)} successfully acknowledged.`,
+        };
+        if (req.actionId) this.completedActions.set(req.actionId, res);
+        return res;
       }
 
-      const { error } = await this.supabase.adminClient
-        .from('alerts')
-        .update({ acknowledged_at: new Date().toISOString() })
-        .eq('org_id', orgId)
-        .eq('id', alertId);
-
-      if (error) {
-        throw new BadRequestException(`Failed to acknowledge alert: ${error.message}`);
-      }
-
-      this.pendingActions.delete(req.actionId);
-      return { success: true, message: `Alert #${alertId.substring(0, 8)} successfully acknowledged.` };
+      throw new BadRequestException(`Unsupported action type: ${req.actionType}`);
+    } finally {
+      if (req.actionId) this.processingActions.delete(req.actionId);
     }
-
-    throw new BadRequestException(`Unsupported action type: ${req.actionType}`);
   }
 }

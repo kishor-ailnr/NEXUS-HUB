@@ -730,6 +730,13 @@ export const Dashboard: React.FC = () => {
                   onVehicleCreated={handleVehicleCreated}
                   onDriverCreated={handleDriverCreated}
                   onCreateTrip={handleOpenTripModalForVehicle}
+                  onOpenDispatch={() => {
+                    setPreselectedVehicleForTrip(null);
+                    setIsTripModalOpen(true);
+                  }}
+                  onTripCompleted={() => {
+                    loadDashboardData();
+                  }}
                   currentUserRole={user?.role}
                 />
               </aside>
