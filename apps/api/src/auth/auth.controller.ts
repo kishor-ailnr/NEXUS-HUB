@@ -105,6 +105,7 @@ export class AuthController {
       dto.access_token,
       dto.refresh_token,
       requestedMode,
+      dto.selectedRole,
     );
     this.setCookies(res, nwAccessToken, nwRefreshToken);
     return {

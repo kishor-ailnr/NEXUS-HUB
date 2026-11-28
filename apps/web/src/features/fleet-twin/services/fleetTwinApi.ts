@@ -227,18 +227,25 @@ export const fleetTwinApi = {
   async acceptReroute(
     id: string,
     rerouteId?: string,
-  ): Promise<{ success: boolean; reroute: MockReroute }> {
+    candidateId?: string,
+  ): Promise<{ success: boolean; reroute: MockReroute; routeChange?: any }> {
     for (const key of twinCache.keys()) {
       if (key.startsWith(`${id}:`)) twinCache.delete(key);
     }
     allVehiclesCache = null;
-    return apiFetch<{ success: boolean; reroute: MockReroute }>(
+    return apiFetch<{ success: boolean; reroute: MockReroute; routeChange?: any }>(
       `/api/fleet-twin/vehicles/${id}/reroute/accept`,
       {
         method: 'POST',
-        data: { rerouteId },
+        data: { rerouteId, candidateId },
       },
     );
+  },
+
+  async getRouteChanges(id: string): Promise<any[]> {
+    return apiFetch<any[]>(`/api/fleet-twin/vehicles/${id}/route-changes`, {
+      method: 'GET',
+    });
   },
 
   async revertReroute(id: string): Promise<{ success: boolean }> {

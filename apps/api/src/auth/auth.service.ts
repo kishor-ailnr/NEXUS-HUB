@@ -209,6 +209,7 @@ export class AuthService {
     accessToken: string,
     refreshToken: string,
     requestedMode?: OrgMode,
+    selectedRole?: 'admin' | 'driver',
   ): Promise<{
     user: UserProfile;
     nwAccessToken: string;
@@ -298,6 +299,19 @@ export class AuthService {
     if (requestedMode && orgMode !== requestedMode) {
       throw new ForbiddenException(
         `Access denied: Organization mode mismatch. User belongs to '${orgMode}', cannot access '${requestedMode}'.`,
+      );
+    }
+
+    // Enforce strict login role verification: selectedRole must match user's actual DB role
+    const actualRole = (userRow as any).role as UserRole;
+    if (selectedRole === 'admin' && actualRole !== 'manager' && actualRole !== 'operator') {
+      throw new ForbiddenException(
+        `Access denied: Account role '${actualRole}' is not authorized for Admin login.`,
+      );
+    }
+    if (selectedRole === 'driver' && actualRole !== 'driver') {
+      throw new ForbiddenException(
+        `Access denied: Account role '${actualRole}' is not authorized for Driver login. Please select Admin.`,
       );
     }
 

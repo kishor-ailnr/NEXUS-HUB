@@ -35,6 +35,7 @@ export const Login: React.FC = () => {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [selectedRole, setSelectedRole] = useState<'admin' | 'driver'>('admin');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -97,7 +98,7 @@ export const Login: React.FC = () => {
     setSubmitting(true);
 
     try {
-      await login(email, password, currentMode);
+      await login(email, password, currentMode, selectedRole);
       toast.success(`Welcome back to ${modeTitle} Operations.`);
       navigate(`/${currentMode}/dashboard`, { replace: true });
     } catch (err: any) {
@@ -219,6 +220,39 @@ export const Login: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Role Selection: ADMIN vs DRIVER */}
+              <div className="space-y-1.5 text-left">
+                <Label className="text-slate-200 text-xs font-semibold">
+                  Login As
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    data-testid="role-select-admin"
+                    onClick={() => setSelectedRole('admin')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                      selectedRole === 'admin'
+                        ? 'bg-sky-500/25 border-sky-400 text-white shadow-sm'
+                        : 'bg-slate-950/50 border-white/15 text-slate-300 hover:bg-white/10'
+                    }`}
+                  >
+                    ADMIN
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="role-select-driver"
+                    onClick={() => setSelectedRole('driver')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                      selectedRole === 'driver'
+                        ? 'bg-emerald-500/25 border-emerald-400 text-white shadow-sm'
+                        : 'bg-slate-950/50 border-white/15 text-slate-300 hover:bg-white/10'
+                    }`}
+                  >
+                    DRIVER
+                  </button>
+                </div>
+              </div>
+
               <div className="space-y-1.5 text-left">
                 <Label htmlFor="login-email" className="text-slate-200 text-xs font-semibold">
                   Email Address

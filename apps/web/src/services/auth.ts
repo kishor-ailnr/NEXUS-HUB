@@ -20,7 +20,12 @@ export const authService = {
   /**
    * Sign in with email and password via Supabase, then exchange session with NestJS API
    */
-  async signInWithPassword(email: string, password: string, mode?: OrgMode): Promise<UserProfile> {
+  async signInWithPassword(
+    email: string,
+    password: string,
+    mode?: OrgMode,
+    selectedRole?: 'admin' | 'driver',
+  ): Promise<UserProfile> {
     if (!isSupabaseConfigured) {
       throw new Error(
         'Supabase authentication is not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your Render Dashboard.',
@@ -38,7 +43,7 @@ export const authService = {
 
     const { access_token, refresh_token } = authData.session;
 
-    // Exchange session with API, passing division mode
+    // Exchange session with API, passing division mode & selected login role
     try {
       const res = await apiFetch<{ user: UserProfile; accessToken?: string }>('/auth/session', {
         method: 'POST',
@@ -47,13 +52,27 @@ export const authService = {
           access_token,
           refresh_token,
           mode,
+          selectedRole,
         },
       });
       if (res.accessToken) {
         setStoredAuthToken(res.accessToken);
       }
       return res.user;
-    } catch (apiErr) {
+    } catch (apiErr: any) {
+      const msg = String(apiErr?.message || '');
+      const status = apiErr?.statusCode || apiErr?.status;
+      if (
+        status === 401 ||
+        status === 403 ||
+        msg.toLowerCase().includes('access denied') ||
+        msg.toLowerCase().includes('forbidden') ||
+        msg.toLowerCase().includes('not authorized')
+      ) {
+        await supabase.auth.signOut().catch(() => {});
+        throw apiErr;
+      }
+
       console.warn('API session exchange failed, falling back to direct Supabase profile:', apiErr);
       const { data: dbUser, error: userErr } = await supabase
         .from('users')
@@ -62,7 +81,17 @@ export const authService = {
         .single();
 
       if (userErr || !dbUser) {
+        await supabase.auth.signOut().catch(() => {});
         throw new Error(userErr?.message || 'Could not load user profile from database');
+      }
+
+      if (selectedRole === 'admin' && dbUser.role !== 'manager' && dbUser.role !== 'operator') {
+        await supabase.auth.signOut().catch(() => {});
+        throw new Error(`Access denied: Account role '${dbUser.role}' is not authorized for Admin login.`);
+      }
+      if (selectedRole === 'driver' && dbUser.role !== 'driver') {
+        await supabase.auth.signOut().catch(() => {});
+        throw new Error(`Access denied: Account role '${dbUser.role}' is not authorized for Driver login.`);
       }
 
       const org = dbUser.organization as any;

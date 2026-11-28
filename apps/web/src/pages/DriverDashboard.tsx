@@ -14,6 +14,8 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { vehiclesService } from '../services/vehicles';
 import { tripsService } from '../services/trips';
+import { fleetTwinApi } from '../features/fleet-twin';
+import { apiFetch } from '../lib/api';
 import { railwaysService } from '../services/railways';
 import { airwaysService } from '../services/airways';
 import { seawaysService } from '../services/seaways';
@@ -48,10 +50,26 @@ import {
   Compass,
   Gauge,
   ArrowUpRight,
+  Package,
+  ShieldAlert,
+  RefreshCw,
 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { toast } from 'sonner';
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
 
 export const DriverDashboard: React.FC = () => {
   const { mode } = useParams<{ mode: string }>();
@@ -84,6 +102,19 @@ export const DriverDashboard: React.FC = () => {
   const [liveSea, setLiveSea] = useState<LiveVesselTelemetryPayload | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
+  const [tripActionBusy, setTripActionBusy] = useState(false);
+  const [showIncidentForm, setShowIncidentForm] = useState(false);
+  const [incidentTitle, setIncidentTitle] = useState('');
+  const [incidentDesc, setIncidentDesc] = useState('');
+  const [incidentBusy, setIncidentBusy] = useState(false);
+  const [routeChangeBanner, setRouteChangeBanner] = useState<string | null>(null);
+  const [driverTwinSummary, setDriverTwinSummary] = useState<any | null>(null);
+  const [tripEtaInfo, setTripEtaInfo] = useState<any | null>(null);
+  const [computedSpeedKmh, setComputedSpeedKmh] = useState<number>(0);
+
+  const assignedVehicleIdRef = useRef<string | null>(null);
+  const prevGpsRef = useRef<LiveGpsPayload | null>(null);
+  const extraMarkersRef = useRef<L.LayerGroup | null>(null);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -186,12 +217,14 @@ export const DriverDashboard: React.FC = () => {
 
           const myVehicle =
             vehicles.find(
-              (v) => v.driver?.user?.id === user?.id || v.assigned_driver_id === user?.id,
-            ) ||
-            vehicles[0] ||
-            null;
+              (v) =>
+                v.driver?.user?.id === user?.id ||
+                v.driver?.user_id === user?.id ||
+                v.assigned_driver_id === user?.id,
+            ) || null;
 
           setAssignedVehicle(myVehicle);
+          assignedVehicleIdRef.current = myVehicle?.id || null;
 
           if (myVehicle) {
             const trip = trips.find(
@@ -200,8 +233,27 @@ export const DriverDashboard: React.FC = () => {
                 (t.status === 'in_transit' || t.status === 'planned'),
             );
             setActiveTrip(trip || null);
+
+            const etaFn = (tripsService as any).getTripEta || (tripsService as any).getEta;
+            if (trip && typeof etaFn === 'function') {
+              etaFn(trip.id).then((etaRes: any) => {
+                if (isMounted) setTripEtaInfo(etaRes);
+              }).catch(() => {});
+            }
+
+            if (typeof fleetTwinApi?.getVehicleDigitalTwin === 'function') {
+              fleetTwinApi
+                .getVehicleDigitalTwin(myVehicle.id)
+                .then((twin) => {
+                  if (isMounted) setDriverTwinSummary(twin);
+                })
+                .catch(() => {
+                  if (isMounted) setDriverTwinSummary(null);
+                });
+            }
+
             if (myVehicle.latest_gps) {
-              setLiveGps({
+              const initialGps: LiveGpsPayload = {
                 tripId: trip?.id || '',
                 vehicleId: myVehicle.id,
                 driverId: user?.id || '',
@@ -210,7 +262,10 @@ export const DriverDashboard: React.FC = () => {
                 speed_kmh: Number(myVehicle.latest_gps.speed_kmh || 0),
                 heading: myVehicle.latest_gps.heading || 0,
                 recorded_at: myVehicle.latest_gps.recorded_at,
-              });
+              };
+              setLiveGps(initialGps);
+              prevGpsRef.current = initialGps;
+              setComputedSpeedKmh(Math.max(0, Math.round(initialGps.speed_kmh)));
             }
           }
         }
@@ -221,20 +276,52 @@ export const DriverDashboard: React.FC = () => {
 
     loadDriverData();
 
-    // Connect to WebSocket for live telemetry
+    // Periodic sync fallback every 15s
+    const syncInterval = setInterval(() => {
+      if (!isRailways && !isAirways && !isSeaways) {
+        loadDriverData();
+      }
+    }, 15000);
+
+    // Connect to WebSocket for live telemetry (using ref to avoid stale closure!)
     socketService.connect(
-      undefined,
+      (notif) => {
+        if (notif?.title?.toLowerCase().includes('route updated')) {
+          setRouteChangeBanner(`${notif.title}: ${notif.body}`);
+          loadDriverData();
+        }
+      },
       undefined,
       (gps) => {
-        if (assignedVehicle && gps.vehicleId === assignedVehicle.id) {
+        const targetVehId = assignedVehicleIdRef.current;
+        if (targetVehId && gps.vehicleId === targetVehId) {
+          // Speed calculation with spike filtering (>135 km/h ignored)
+          let speed = typeof gps.speed_kmh === 'number' && Number.isFinite(gps.speed_kmh) ? gps.speed_kmh : 0;
+          if (speed <= 0 && prevGpsRef.current) {
+            const dtHours =
+              (new Date(gps.recorded_at).getTime() - new Date(prevGpsRef.current.recorded_at).getTime()) /
+              3600000;
+            if (dtHours > 0.0002) {
+              const dist = haversineKm(prevGpsRef.current.lat, prevGpsRef.current.lng, gps.lat, gps.lng);
+              const calc = dist / dtHours;
+              if (calc >= 0 && calc <= 135) speed = calc;
+            }
+          }
+          setComputedSpeedKmh(speed > 135 ? 0 : Math.max(0, Math.round(speed)));
+          prevGpsRef.current = gps;
           setLiveGps(gps);
         }
       },
       (status) => {
-        if (assignedVehicle && status.vehicleId === assignedVehicle.id) {
-          if (status.status === 'completed') {
-            toast.success('Your trip has arrived at its destination!');
-            setActiveTrip((prev) => (prev ? { ...prev, status: 'completed' } : null));
+        const targetVehId = assignedVehicleIdRef.current;
+        if (targetVehId && status.vehicleId === targetVehId) {
+          if (status.status === 'completed' || status.status === 'cancelled' || status.status === 'deleted') {
+            toast.info(`Trip status updated: ${status.status}`);
+            setActiveTrip(null);
+            setComputedSpeedKmh(0);
+            loadDriverData();
+          } else {
+            loadDriverData();
           }
         }
       },
@@ -281,9 +368,10 @@ export const DriverDashboard: React.FC = () => {
 
     return () => {
       isMounted = false;
+      clearInterval(syncInterval);
       socketService.disconnect();
     };
-  }, [user, isRailways, isAirways, isSeaways, assignedVehicle?.id, activeMovement?.id, activeFlightMovement?.id, activeVoyageMovement?.id]);
+  }, [user, isRailways, isAirways, isSeaways, activeMovement?.id, activeFlightMovement?.id, activeVoyageMovement?.id]);
 
   // Leaflet Map for Console
   useEffect(() => {
@@ -482,26 +570,10 @@ export const DriverDashboard: React.FC = () => {
       }
     } else {
       // Roadways Map Display
-      if (liveGps) {
-        const { lat, lng } = liveGps;
-        map.setView([lat, lng], map.getZoom() || 12);
-
-        const customIcon = L.divIcon({
-          html: `
-            <div class="flex items-center justify-center w-7 h-7 rounded-full bg-status-informational border-2 border-white shadow-xl text-white">
-              <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.22.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>
-            </div>
-          `,
-          className: 'driver-marker',
-          iconSize: [28, 28],
-          iconAnchor: [14, 14],
-        });
-
-        if (markerRef.current) {
-          markerRef.current.setLatLng([lat, lng]);
-        } else {
-          markerRef.current = L.marker([lat, lng], { icon: customIcon }).addTo(map);
-        }
+      if (!extraMarkersRef.current) {
+        extraMarkersRef.current = L.layerGroup().addTo(map);
+      } else {
+        extraMarkersRef.current.clearLayers();
       }
 
       if (activeTrip?.route_geometry?.coordinates?.length) {
@@ -512,10 +584,76 @@ export const DriverDashboard: React.FC = () => {
           (c) => [c[1], c[0]] as [number, number],
         );
         routeLayerRef.current = L.polyline(latLngs, {
-          color: '#3b82f6',
-          weight: 4,
-          opacity: 0.8,
+          color: '#2563eb',
+          weight: 5,
+          opacity: 0.9,
         }).addTo(map);
+
+        const originPt = latLngs[0];
+        const destPt = latLngs[latLngs.length - 1];
+        if (originPt && extraMarkersRef.current) {
+          L.circleMarker(originPt, {
+            radius: 6,
+            color: '#fff',
+            weight: 2,
+            fillColor: '#10b981',
+            fillOpacity: 1,
+          })
+            .bindPopup(`<strong>Origin:</strong> ${activeTrip.origin_label}`)
+            .addTo(extraMarkersRef.current);
+        }
+        if (destPt && extraMarkersRef.current) {
+          L.circleMarker(destPt, {
+            radius: 7,
+            color: '#fff',
+            weight: 2,
+            fillColor: '#f59e0b',
+            fillOpacity: 1,
+          })
+            .bindPopup(`<strong>Destination:</strong> ${activeTrip.destination_label}`)
+            .addTo(extraMarkersRef.current);
+        }
+
+        (activeTrip.checkpoints || []).forEach((cp: any, idx: number) => {
+          if (cp.lat && cp.lng && extraMarkersRef.current) {
+            L.circleMarker([cp.lat, cp.lng], {
+              radius: 5,
+              color: '#fff',
+              weight: 1.5,
+              fillColor: cp.reached_at ? '#10b981' : '#64748b',
+              fillOpacity: 0.95,
+            })
+              .bindPopup(`#${idx + 1} ${cp.label}`)
+              .addTo(extraMarkersRef.current);
+          }
+        });
+
+        if (!liveGps && latLngs.length > 1) {
+          map.fitBounds(L.latLngBounds(latLngs), { padding: [30, 30], maxZoom: 12 });
+        }
+      }
+
+      if (liveGps) {
+        const { lat, lng, heading = 0 } = liveGps;
+        map.setView([lat, lng], map.getZoom() || 12);
+
+        const customIcon = L.divIcon({
+          html: `
+            <div style="transform: rotate(${Math.round(heading)}deg);" class="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 border-2 border-white shadow-xl text-white">
+              <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.22.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>
+            </div>
+          `,
+          className: 'driver-marker',
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
+        });
+
+        if (markerRef.current) {
+          markerRef.current.setLatLng([lat, lng]);
+          markerRef.current.setIcon(customIcon);
+        } else {
+          markerRef.current = L.marker([lat, lng], { icon: customIcon }).addTo(map);
+        }
       }
     }
   }, [liveGps, liveRail, liveFlight, liveSea, activeTrip, activeMovement, activeFlightMovement, activeVoyageMovement, isRailways, isAirways, isSeaways]);
@@ -890,9 +1028,74 @@ export const DriverDashboard: React.FC = () => {
         )}
 
         {/* ROADWAYS DRIVER VIEW */}
-        {!isRailways && !isAirways && !isSeaways && (
+        {!isRailways && !isAirways && !isSeaways && (() => {
+          const totalKm = Math.round(activeTrip?.distance_km || driverTwinSummary?.route?.total_distance_km || 0);
+          let progressPct = activeTrip?.status === 'completed' ? 100 : 0;
+          if (activeTrip?.status === 'in_transit') {
+            if (typeof driverTwinSummary?.current_progress_pct === 'number') {
+              progressPct = Math.round(driverTwinSummary.current_progress_pct);
+            } else if (liveGps && activeTrip.route_geometry?.coordinates?.length) {
+              const coords = activeTrip.route_geometry.coordinates;
+              let bestIdx = 0;
+              let bestDist = Infinity;
+              for (let i = 0; i < coords.length; i++) {
+                const d = Math.hypot(coords[i][1] - liveGps.lat, coords[i][0] - liveGps.lng);
+                if (d < bestDist) {
+                  bestDist = d;
+                  bestIdx = i;
+                }
+              }
+              progressPct = Math.max(0, Math.min(99, Math.round((bestIdx / Math.max(1, coords.length - 1)) * 100)));
+            }
+          }
+          const completedKm = Math.round((progressPct / 100) * totalKm);
+          const remainingKm = Math.max(0, totalKm - completedKm);
+          const checkpointsList = activeTrip?.checkpoints || [];
+          const nextCp = checkpointsList.find((cp: any) => !cp.reached_at) || checkpointsList[0] || null;
+          const distToNextCpKm =
+            nextCp && liveGps && nextCp.lat && nextCp.lng
+              ? Math.round(haversineKm(liveGps.lat, liveGps.lng, nextCp.lat, nextCp.lng) * 10) / 10
+              : null;
+          const etaMinutes =
+            tripEtaInfo?.predictedDurationMinutes ||
+            activeTrip?.predicted_duration_minutes ||
+            activeTrip?.duration_minutes ||
+            null;
+          const etaText = driverTwinSummary?.predicted_eta
+            ? new Date(driverTwinSummary.predicted_eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : etaMinutes
+            ? new Date(Date.now() + etaMinutes * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : 'Unavailable';
+          const cargoMeta: any = (activeTrip as any)?.dispatch_metadata || {};
+
+          return (
           <>
-            <Card className="bg-white border-slate-800 shadow-sm rounded-xl overflow-hidden">
+            {/* Live Navigation Map */}
+            <Card className="bg-white border-slate-200 shadow-sm rounded-xl overflow-hidden">
+              <CardHeader className="p-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-blue-600" />
+                  Live Navigation Map • {assignedVehicle?.registration_number || 'No Vehicle Assigned'}
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-semibold"
+                  >
+                    SIMULATED GPS
+                  </Badge>
+                  {liveGps?.recorded_at && (
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Updated {new Date(liveGps.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+              </CardHeader>
+              <div ref={mapContainerRef} className="h-72 sm:h-80 w-full bg-slate-100" />
+            </Card>
+
+            {/* Trip Summary & Progress Bar */}
+            <Card className="bg-white border-slate-200 shadow-sm rounded-xl overflow-hidden">
               <CardHeader className="p-4 border-b border-slate-100 flex flex-row items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="p-2 rounded-lg bg-blue-50 text-blue-600 border border-blue-200">
@@ -922,24 +1125,48 @@ export const DriverDashboard: React.FC = () => {
               </CardHeader>
 
               <CardContent className="p-4 space-y-3 text-xs">
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
-                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
                     <span className="text-[11px] text-slate-500 font-medium">Live Speed</span>
                     <p className="font-bold text-blue-700 text-base mt-0.5">
-                      {liveGps?.speed_kmh || 0} km/h
+                      {activeTrip?.status === 'in_transit' ? computedSpeedKmh : 0} km/h
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
-                    <span className="text-[11px] text-slate-500 font-medium">Trip Distance</span>
-                    <p className="font-bold text-slate-900 text-base mt-0.5">
-                      {activeTrip?.distance_km || 0} km
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                    <span className="text-[11px] text-slate-500 font-medium">Completed</span>
+                    <p className="font-bold text-emerald-700 text-base mt-0.5">
+                      {completedKm} km
                     </p>
                   </div>
-                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-800">
-                    <span className="text-[11px] text-slate-500 font-medium">Est. Duration</span>
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                    <span className="text-[11px] text-slate-500 font-medium">Remaining</span>
                     <p className="font-bold text-slate-900 text-base mt-0.5">
-                      {activeTrip?.duration_minutes || 0} min
+                      {remainingKm} km
                     </p>
+                  </div>
+                  <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                    <span className="text-[11px] text-slate-500 font-medium">ETA</span>
+                    <p className="font-bold text-slate-900 text-base mt-0.5">
+                      {etaText}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Journey Progress Bar */}
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between font-semibold text-slate-700">
+                    <span>Journey Progress</span>
+                    <span className="font-mono text-blue-700">{progressPct}%</span>
+                  </div>
+                  <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-600 transition-all duration-500"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-500">
+                    <span>Total: {totalKm} km</span>
+                    <span>Direction: {liveGps?.heading ? `${Math.round(liveGps.heading)}°` : 'Along Route'}</span>
                   </div>
                 </div>
 
@@ -955,22 +1182,270 @@ export const DriverDashboard: React.FC = () => {
                       <span className="text-slate-500">Destination:</span>
                       <span className="font-semibold text-slate-900">{activeTrip.destination_label}</span>
                     </div>
+                    {(activeTrip.predicted_duration_minutes || activeTrip.duration_minutes) && (
+                      <div className="flex items-center gap-2 text-slate-700">
+                        <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+                        <span className="text-slate-500">Estimated Arrival:</span>
+                        <span className="font-semibold text-slate-900">
+                          {new Date(
+                            Date.now() + (activeTrip.predicted_duration_minutes || activeTrip.duration_minutes || 0) * 60000,
+                          ).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {routeChangeBanner && (
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 flex items-center justify-between gap-2">
+                    <span className="font-semibold">{routeChangeBanner}</span>
+                    <button
+                      type="button"
+                      onClick={() => setRouteChangeBanner(null)}
+                      className="text-xs font-bold underline cursor-pointer"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+
+                {/* Driver Controls: Start/End Trip & Emergency Incident Report */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {activeTrip?.status === 'planned' && (
+                      <Button
+                        size="sm"
+                        disabled={tripActionBusy}
+                        onClick={async () => {
+                          if (!activeTrip) return;
+                          setTripActionBusy(true);
+                          try {
+                            const updated = await tripsService.updateStatus(activeTrip.id, 'in_transit');
+                            setActiveTrip(updated);
+                            toast.success('Trip started. Live tracking active.');
+                          } catch (err: any) {
+                            toast.error(err?.message || 'Failed to start trip');
+                          } finally {
+                            setTripActionBusy(false);
+                          }
+                        }}
+                        className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        Start Trip
+                      </Button>
+                    )}
+                    {activeTrip?.status === 'in_transit' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={tripActionBusy}
+                        onClick={async () => {
+                          if (!activeTrip) return;
+                          setTripActionBusy(true);
+                          try {
+                            const res = await tripsService.completeTrip(activeTrip.id, 'Completed by driver');
+                            setActiveTrip(res.trip);
+                            toast.success('Trip marked completed.');
+                          } catch (err: any) {
+                            toast.error(err?.message || 'Failed to complete trip');
+                          } finally {
+                            setTripActionBusy(false);
+                          }
+                        }}
+                        className="h-8 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                      >
+                        End Trip
+                      </Button>
+                    )}
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowIncidentForm((p) => !p)}
+                    className="h-8 text-xs border-rose-300 text-rose-700 hover:bg-rose-50 gap-1"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Report Incident / Emergency
+                  </Button>
+                </div>
+
+                {showIncidentForm && (
+                  <div className="p-3 rounded-lg bg-rose-50/70 border border-rose-200 space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Incident title (e.g., Highway Blockage, Breakdown)"
+                      value={incidentTitle}
+                      onChange={(e) => setIncidentTitle(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs rounded border border-rose-200 bg-white"
+                    />
+                    <textarea
+                      rows={2}
+                      placeholder="Describe location, severity, and support needed..."
+                      value={incidentDesc}
+                      onChange={(e) => setIncidentDesc(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs rounded border border-rose-200 bg-white"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowIncidentForm(false)}
+                        className="h-7 text-xs"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={incidentBusy || !incidentTitle.trim() || !incidentDesc.trim()}
+                        onClick={async () => {
+                          setIncidentBusy(true);
+                          try {
+                            await apiFetch('/notifications/incident', {
+                              method: 'POST',
+                              data: {
+                                vehicleId: assignedVehicle?.id,
+                                tripId: activeTrip?.id,
+                                severity: 'critical',
+                                title: incidentTitle.trim(),
+                                description: incidentDesc.trim(),
+                                lat: liveGps?.lat,
+                                lng: liveGps?.lng,
+                              },
+                            });
+                            toast.success('Incident alert sent to fleet operations.');
+                            setIncidentTitle('');
+                            setIncidentDesc('');
+                            setShowIncidentForm(false);
+                          } catch (err: any) {
+                            toast.error(err?.message || 'Failed to report incident');
+                          } finally {
+                            setIncidentBusy(false);
+                          }
+                        }}
+                        className="h-7 text-xs bg-rose-600 hover:bg-rose-700 text-white"
+                      >
+                        {incidentBusy ? 'Sending...' : 'Send Alert'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cargo & Delivery Progress Panel */}
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between font-bold text-slate-800">
+                    <span className="flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-blue-600" />
+                      Cargo &amp; Delivery Progress
+                    </span>
+                    <span className="font-mono text-[10px] text-slate-500">
+                      {activeTrip ? `Shipment #${activeTrip.id.slice(0, 8)}` : 'No Active Shipment'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-600">
+                    <div>
+                      <span className="text-slate-400 block">Cargo</span>
+                      <strong className="text-slate-800 capitalize">{cargoMeta.cargoType || assignedVehicle?.vehicle_type || 'Standard Freight'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block">Weight</span>
+                      <strong className="text-slate-800">{cargoMeta.cargoWeightKg ? `${cargoMeta.cargoWeightKg} kg` : 'Unavailable'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block">Loading</span>
+                      <strong className="text-slate-800">{activeTrip ? 'Loaded & Sealed' : 'Standby'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block">Delivery Status</span>
+                      <strong className="text-slate-800 capitalize">{activeTrip?.status || 'Idle'}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Driver Digital Twin Summary Panel */}
+                <div className="p-3 rounded-lg bg-blue-50/50 border border-blue-200 space-y-1.5">
+                  <div className="flex items-center justify-between font-bold text-blue-950">
+                    <span className="flex items-center gap-1.5">
+                      <ShieldAlert className="w-3.5 h-3.5 text-blue-600" />
+                      Digital Twin Route &amp; Risk Summary
+                    </span>
+                    <span className="text-[10px] font-semibold text-blue-700">
+                      {driverTwinSummary ? 'LIVE TWIN' : tripEtaInfo ? 'ETA ENGINE' : 'ANALYZING'}
+                    </span>
+                  </div>
+                  {driverTwinSummary ? (
+                    <div className="space-y-1 text-[11px] text-slate-700">
+                      <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        <span>Predicted ETA: <strong>{etaText}</strong></span>
+                        <span>Delay: <strong>+{driverTwinSummary.total_predicted_delay_minutes || 0}m</strong></span>
+                        <span>Risk Score: <strong>{driverTwinSummary.risk_score}/100</strong></span>
+                      </div>
+                      {driverTwinSummary.explanation?.summary && (
+                        <p className="text-slate-600">{driverTwinSummary.explanation.summary}</p>
+                      )}
+                      {driverTwinSummary.active_reroute && (
+                        <div className="p-2 rounded bg-emerald-50 border border-emerald-200 text-emerald-900">
+                          <strong>Recommended Alternate:</strong> {driverTwinSummary.active_reroute.recommended_route_name} (Saves {driverTwinSummary.active_reroute.time_saved_minutes}m)
+                        </div>
+                      )}
+                    </div>
+                  ) : tripEtaInfo ? (
+                    <div className="text-[11px] text-slate-700 flex flex-wrap gap-x-4">
+                      <span>Planned: <strong>{tripEtaInfo.plannedDurationMinutes}m</strong></span>
+                      <span>Predicted: <strong>{tripEtaInfo.predictedDurationMinutes}m</strong></span>
+                      <span>Traffic Delay: <strong>+{tripEtaInfo.trafficDelayMinutes || 0}m</strong></span>
+                      <span>Weather Delay: <strong>+{tripEtaInfo.weatherDelayMinutes || 0}m</strong></span>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-500">
+                      Analyzing journey — Digital Twin prediction unavailable until trip telemetry starts.
+                    </p>
+                  )}
+                </div>
+
+                {/* Checkpoints & Driver Shift/Rest Info */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                    <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Checkpoints ({checkpointsList.length})
+                      {nextCp && distToNextCpKm !== null && (
+                        <span className="ml-1 text-blue-700 font-normal">
+                          • Next: {nextCp.label} ({distToNextCpKm} km)
+                        </span>
+                      )}
+                    </div>
+                    {checkpointsList.length > 0 ? (
+                      <ul className="space-y-1 text-[11px] text-slate-600 max-h-24 overflow-y-auto">
+                        {checkpointsList.map((cp: any, idx: number) => (
+                          <li key={cp.id || idx} className="flex items-center justify-between">
+                            <span>#{idx + 1} {cp.label}</span>
+                            <span className="text-[10px] font-mono text-slate-400">
+                              {cp.reached_at ? 'Passed' : nextCp?.id === cp.id ? 'Next' : 'Upcoming'}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-[11px] text-slate-500">No intermediate checkpoints logged.</p>
+                    )}
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                    <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Driver Shift &amp; Rest Status
+                    </div>
+                    <p className="text-[11px] text-slate-600">
+                      Mandatory 30m rest required after 4.5h continuous driving. Keep HOS compliant.
+                    </p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
-
-            <Card className="bg-white border-slate-800 shadow-sm rounded-xl overflow-hidden">
-              <CardHeader className="p-3 border-b border-slate-100 flex flex-row items-center justify-between">
-                <CardTitle className="text-xs font-semibold text-slate-800 flex items-center gap-2">
-                  <Navigation className="w-4 h-4 text-blue-600" />
-                  Live Navigation Route
-                </CardTitle>
-              </CardHeader>
-              <div ref={mapContainerRef} className="h-72 w-full bg-slate-100" />
-            </Card>
           </>
-        )}
+          );
+        })()}
       </main>
     </div>
   );

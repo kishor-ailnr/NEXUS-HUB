@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { DriversService } from './drivers.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -21,11 +22,13 @@ export class DriversController {
   constructor(private readonly driversService: DriversService) {}
 
   @Get()
+  @Roles('manager', 'operator')
   async findAll(@CurrentUser() user: any): Promise<Driver[]> {
     return this.driversService.findAll(user.orgId);
   }
 
   @Get('eligible')
+  @Roles('manager', 'operator')
   async getEligible(@CurrentUser() user: any) {
     return this.driversService.getEligibleDrivers(user.orgId);
   }
@@ -35,12 +38,22 @@ export class DriversController {
     @CurrentUser() user: any,
     @Param('id') id: string,
   ): Promise<DriverBehaviorScore[]> {
+    if (user.role === 'driver') {
+      const driver = await this.driversService.findOne(user.orgId, id);
+      if (driver.user_id !== user.id && driver.user?.id !== user.id) {
+        throw new ForbiddenException('Forbidden: Drivers can only access their own behavior history');
+      }
+    }
     return this.driversService.getBehaviorHistory(user.orgId, id);
   }
 
   @Get(':id')
   async findOne(@CurrentUser() user: any, @Param('id') id: string): Promise<Driver> {
-    return this.driversService.findOne(user.orgId, id);
+    const driver = await this.driversService.findOne(user.orgId, id);
+    if (user.role === 'driver' && driver.user_id !== user.id && driver.user?.id !== user.id) {
+      throw new ForbiddenException('Forbidden: Drivers can only access their own driver profile');
+    }
+    return driver;
   }
 
   @Post()

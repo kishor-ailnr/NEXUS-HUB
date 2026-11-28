@@ -64,5 +64,9 @@ export class AcceptRerouteDto {
   @IsOptional()
   @IsString()
   rerouteId?: string;
+
+  @IsOptional()
+  @IsString()
+  candidateId?: string;
 }
 

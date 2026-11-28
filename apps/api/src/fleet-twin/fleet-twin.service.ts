@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, Optional, Inject } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ForbiddenException, Optional, Inject } from '@nestjs/common';
 import {
   MockFleet,
   MockDriver,
@@ -22,6 +22,8 @@ import { PredictionService } from './prediction/prediction.service';
 import { RerouteEngine } from './rerouting/reroute-engine';
 import { TrafficProvider, TomTomTrafficProvider } from './prediction/providers/traffic.provider';
 import { TRAFFIC_PROVIDER } from './tokens';
+import { RoutingService } from '../routing/routing.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import {
   MOCK_FLEETS_DATA,
   MOCK_DRIVERS_DATA,
@@ -43,6 +45,19 @@ export class FleetTwinService {
   private inMemoryCheckpoints: MockCheckpoint[] = [];
   private inMemoryVehicles: MockVehicle[] = [];
   private inMemoryReroutes: Map<string, MockReroute> = new Map();
+  private routeChangesStore: Map<
+    string,
+    Array<{
+      change_id: string;
+      vehicle_id: string;
+      trip_id: string;
+      previous_route: string;
+      new_route: string;
+      changed_by: string;
+      timestamp: string;
+      reason: string;
+    }>
+  > = new Map();
   private lastSeededAt: string = new Date().toISOString();
   private isPurged = false;
 
@@ -106,9 +121,71 @@ export class FleetTwinService {
     private readonly predictionService: PredictionService,
     @Optional() private readonly rerouteEngineInjected?: RerouteEngine,
     @Optional() @Inject(TRAFFIC_PROVIDER) private readonly trafficProvider?: TrafficProvider,
+    @Optional() private readonly routingService?: RoutingService,
+    @Optional() private readonly realtimeGateway?: RealtimeGateway,
   ) {
     this.rerouteEngine = rerouteEngineInjected || new RerouteEngine();
     this.initializeInMemory();
+  }
+
+  /**
+   * Strict RBAC check: ensures a 'driver' user can only access their own assigned vehicle.
+   */
+  async assertDriverOwnsVehicle(user: any, vehicleId: string): Promise<void> {
+    if (!user || user.role !== 'driver') return;
+
+    // 1. Check real Supabase vehicles + drivers + active trips if configured
+    if (this.supabaseService?.adminClient && user.orgId) {
+      try {
+        const { data: realVeh } = await this.supabaseService.adminClient
+          .from('vehicles')
+          .select('id, assigned_driver_id, driver:drivers(id, user_id)')
+          .eq('org_id', user.orgId)
+          .eq('id', vehicleId)
+          .maybeSingle();
+
+        if (realVeh) {
+          const drv: any = Array.isArray(realVeh.driver) ? realVeh.driver[0] : realVeh.driver;
+          if (drv?.user_id === user.id) return;
+        }
+
+        const { data: realTrip } = await this.supabaseService.adminClient
+          .from('trips')
+          .select('id, driver:drivers(user_id)')
+          .eq('org_id', user.orgId)
+          .eq('vehicle_id', vehicleId)
+          .in('status', ['in_transit', 'planned'])
+          .maybeSingle();
+
+        const tripDrv: any = realTrip?.driver
+          ? Array.isArray(realTrip.driver)
+            ? realTrip.driver[0]
+            : realTrip.driver
+          : null;
+        if (tripDrv?.user_id === user.id) return;
+      } catch {
+        // Fall through to twin vehicle check
+      }
+    }
+
+    // 2. Check Digital Twin vehicle driver assignment
+    const twinVeh = this.inMemoryVehicles.find((v) => v.id === vehicleId);
+    if (twinVeh) {
+      const twinDrv = twinVeh.driver || this.inMemoryDrivers.find((d) => d.id === twinVeh.driver_id);
+      if (
+        twinDrv &&
+        ((twinDrv as any).user_id === user.id ||
+          (user.email && (twinDrv as any).email?.toLowerCase() === user.email.toLowerCase()))
+      ) {
+        return;
+      }
+    }
+
+    throw new ForbiddenException('Forbidden: Drivers can only access their own assigned vehicle');
+  }
+
+  async getRouteChanges(vehicleId: string) {
+    return this.routeChangesStore.get(vehicleId) || [];
   }
 
   /**
@@ -134,20 +211,20 @@ export class FleetTwinService {
     const diag: TrafficProviderDiagnostics = provider.getDiagnostics
       ? provider.getDiagnostics()
       : {
-          provider: 'Traffic Provider',
-          status: 'DEGRADED',
-          api_key_configured: Boolean(process.env.TOMTOM_API_KEY),
-          last_success_at: null,
-          last_failure_at: null,
-          last_http_status: null,
-          error_category: null,
-          response_latency_ms: null,
-          data_freshness: 'BASELINE_FALLBACK',
-          success_count: 0,
-          failure_count: 0,
-          cache_size: 0,
-          cache_ttl_seconds: 120,
-        };
+        provider: 'Traffic Provider',
+        status: 'DEGRADED',
+        api_key_configured: Boolean(process.env.TOMTOM_API_KEY),
+        last_success_at: null,
+        last_failure_at: null,
+        last_http_status: null,
+        error_category: null,
+        response_latency_ms: null,
+        data_freshness: 'BASELINE_FALLBACK',
+        success_count: 0,
+        failure_count: 0,
+        cache_size: 0,
+        cache_ttl_seconds: 120,
+      };
 
     return probe ? { ...diag, probe } : diag;
   }
@@ -330,26 +407,26 @@ export class FleetTwinService {
         fuel_type: v.fuel_type,
         driver: driver
           ? {
-              id: driver.id,
-              name: driver.name,
-              phone: driver.phone,
-              license_number: driver.license_number,
-              hours_driven_today: driver.hours_driven_today,
-              rest_hours_compliance: driver.rest_hours_compliance,
-            }
+            id: driver.id,
+            name: driver.name,
+            phone: driver.phone,
+            license_number: driver.license_number,
+            hours_driven_today: driver.hours_driven_today,
+            rest_hours_compliance: driver.rest_hours_compliance,
+          }
           : undefined,
         route: route
           ? {
-              id: route.id,
-              name: route.name,
-              corridor: route.corridor,
-              origin_city: route.origin_city,
-              destination_city: route.destination_city,
-              total_distance_km: route.total_distance_km,
-              planned_eta: route.planned_eta,
-              waypoints: checkpoints.map((cp) => [cp.latitude, cp.longitude] as [number, number]),
-              osrm_geometry: route.osrm_geometry || getOsrmCorridor(route.corridor) || undefined,
-            }
+            id: route.id,
+            name: route.name,
+            corridor: route.corridor,
+            origin_city: route.origin_city,
+            destination_city: route.destination_city,
+            total_distance_km: route.total_distance_km,
+            planned_eta: route.planned_eta,
+            waypoints: checkpoints.map((cp) => [cp.latitude, cp.longitude] as [number, number]),
+            osrm_geometry: route.osrm_geometry || getOsrmCorridor(route.corridor) || undefined,
+          }
           : undefined,
         fleet_name: fleet?.name,
         current_checkpoint_name: currentCheckpoint?.name,
@@ -651,6 +728,43 @@ export class FleetTwinService {
     const travelledWaypoints =
       coords.length > 0 ? coords.slice(0, travelledCount) : undefined;
 
+    const normalizeToLatLng = (pt: [number, number]): [number, number] => {
+      if (!pt || pt.length < 2) return [12.9716, 77.5946];
+      return pt[0] > 50 && pt[1] < 45 ? [pt[1], pt[0]] : [pt[0], pt[1]];
+    };
+
+    const destLatLng =
+      coords.length > 0
+        ? normalizeToLatLng(coords[coords.length - 1])
+        : [12.9716, 77.5946];
+
+    const curLat = vehicle.current_lat;
+    const curLng = vehicle.current_lng;
+
+    // Filter any precomputed waypoints so they only move forward from current vehicle GPS position toward destination
+    const trimWaypointsFromCurrent = (pts: [number, number][]): [number, number][] => {
+      if (!pts || pts.length === 0) return [];
+      const norm = pts.map(normalizeToLatLng);
+      const vecLat = destLatLng[0] - curLat;
+      const vecLng = destLatLng[1] - curLng;
+      const lenSq = vecLat * vecLat + vecLng * vecLng;
+      if (lenSq < 1e-6) return [[curLat, curLng], destLatLng as [number, number]];
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < norm.length; i++) {
+        const d = Math.hypot(norm[i][0] - curLat, norm[i][1] - curLng);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = i;
+        }
+      }
+      const forward = norm.slice(bestIdx).filter((pt) => {
+        const proj = ((pt[0] - curLat) * vecLat + (pt[1] - curLng) * vecLng) / lenSq;
+        return proj >= -0.05;
+      });
+      return [[curLat, curLng], ...forward];
+    };
+
     const rec = await this.rerouteEngine.computeOptimalReroute({
       corridorKey,
       startNodeId,
@@ -661,8 +775,49 @@ export class FleetTwinService {
       driverHoursDrivenToday: driver.hours_driven_today,
       whatIf,
       progressPct: vehicle.progress_pct,
-      currentLocation: [vehicle.current_lat, vehicle.current_lng],
+      currentLocation: [curLat, curLng],
       travelledWaypoints,
+    });
+
+    // Dynamic OSRM road-network alternate route starting strictly from vehicle's CURRENT GPS position
+    let dynamicAltWaypoints = trimWaypointsFromCurrent(rec.alternateWaypoints || rec.routeWaypoints || []);
+    if (this.routingService) {
+      try {
+        const dLat = destLatLng[0] - curLat;
+        const dLng = destLatLng[1] - curLng;
+        const normFactor = Math.max(0.01, Math.hypot(dLat, dLng));
+        // Perpendicular bypass offset ~12-18 km ahead of current position
+        const offsetSign = mode === 'cheapest' ? -1 : 1;
+        const offsetMag = Math.min(0.22, Math.max(0.08, normFactor * 0.16));
+        const viaLat = curLat + dLat * 0.45 + offsetSign * (-dLng / normFactor) * offsetMag;
+        const viaLng = curLng + dLng * 0.45 + offsetSign * (dLat / normFactor) * offsetMag;
+
+        const osrmAlt = await this.routingService.getDistinctAlternateRoute(
+          curLat,
+          curLng,
+          destLatLng[0],
+          destLatLng[1],
+          viaLat,
+          viaLng,
+          coords,
+        );
+        if (osrmAlt?.coordinates && osrmAlt.coordinates.length > 2) {
+          dynamicAltWaypoints = osrmAlt.coordinates.map(normalizeToLatLng);
+        }
+      } catch (err) {
+        this.logger.debug(`OSRM current-position alternate fallback used: ${err}`);
+      }
+    }
+
+    const updatedCandidates = (rec.alternateCandidates || []).map((cand, idx) => {
+      const trimmed =
+        idx === 0 && dynamicAltWaypoints.length > 2
+          ? dynamicAltWaypoints
+          : trimWaypointsFromCurrent(cand.waypoints || []);
+      return {
+        ...cand,
+        waypoints: trimmed.length > 1 ? trimmed : dynamicAltWaypoints,
+      };
     });
 
     const mockReroute: MockReroute = {
@@ -678,11 +833,11 @@ export class FleetTwinService {
       risk_score_delta: rec.riskScoreDelta,
       new_eta: rec.newEta,
       meeting_deadline_prob: rec.meetingDeadlineProb,
-      route_waypoints: rec.routeWaypoints,
+      route_waypoints: dynamicAltWaypoints,
       alternate_corridor: rec.alternateCorridorName,
       reason: rec.reason,
-      trigger_checkpoint_name: rec.triggerCheckpointName,
-      trigger_time: rec.triggerTime,
+      trigger_checkpoint_name: 'Current GPS Position',
+      trigger_time: new Date().toISOString(),
       accepted: false,
       is_mock: true,
       seed_batch_id: vehicle.seed_batch_id || SEED_BATCH_ID,
@@ -691,13 +846,17 @@ export class FleetTwinService {
       alternate_metrics: rec.alternateMetrics,
       problems: rec.problems,
       feasibility: rec.feasibility,
-      divergence_point: rec.divergencePoint,
+      divergence_point: {
+        name: `Current Position (${curLat.toFixed(3)}, ${curLng.toFixed(3)})`,
+        latitude: curLat,
+        longitude: curLng,
+      },
       convergence_point: rec.convergencePoint,
       destination_point: rec.destinationPoint,
-      travelled_waypoints: rec.travelledWaypoints,
-      original_remaining_waypoints: rec.originalRemainingWaypoints,
-      alternate_waypoints: rec.alternateWaypoints,
-      alternate_candidates: rec.alternateCandidates,
+      travelled_waypoints: travelledWaypoints,
+      original_remaining_waypoints: trimWaypointsFromCurrent(rec.originalRemainingWaypoints || []),
+      alternate_waypoints: dynamicAltWaypoints,
+      alternate_candidates: updatedCandidates,
     };
 
     this.inMemoryReroutes.set(vehicle.id, mockReroute);
@@ -706,16 +865,43 @@ export class FleetTwinService {
   }
 
   /**
-   * Accept Reroute Recommendation.
+   * Accept Reroute Recommendation: promotes chosen alternate to ACTIVE route,
+   * preserves completed progress, records RouteChange history, and notifies driver.
    */
-  async acceptReroute(vehicleId: string, rerouteId?: string): Promise<{ success: boolean; reroute: MockReroute }> {
+  async acceptReroute(
+    vehicleId: string,
+    rerouteId?: string,
+    candidateId?: string,
+    user?: any,
+  ): Promise<{ success: boolean; reroute: MockReroute; routeChange?: any }> {
     const existing = this.inMemoryReroutes.get(vehicleId);
     if (!existing) {
       throw new NotFoundException(`No active reroute found for vehicle ${vehicleId}`);
     }
 
+    const chosenCand = candidateId
+      ? existing.alternate_candidates?.find((c) => c.id === candidateId)
+      : undefined;
+    if (chosenCand) {
+      existing.recommended_route_name = chosenCand.name;
+      existing.alternate_corridor = chosenCand.corridor || chosenCand.name;
+      if (chosenCand.waypoints && chosenCand.waypoints.length > 1) {
+        existing.alternate_waypoints = chosenCand.waypoints;
+        existing.route_waypoints = chosenCand.waypoints;
+      }
+      if (existing.alternate_metrics) {
+        existing.alternate_metrics.remaining_distance_km = chosenCand.distance_km;
+        existing.alternate_metrics.predicted_travel_time_minutes = chosenCand.duration_minutes;
+        existing.alternate_metrics.toll_cost_inr = chosenCand.toll_cost_inr;
+        existing.alternate_metrics.fuel_cost_inr = chosenCand.fuel_cost_inr;
+        existing.alternate_metrics.route_risk_score = chosenCand.risk_score;
+      }
+    }
+
     existing.accepted = true;
     this.inMemoryReroutes.set(vehicleId, existing);
+
+    let previousRouteName = 'Original Primary Corridor';
 
     // Update vehicle status & geometry in memory preserving completed/travelled section
     const vIndex = this.inMemoryVehicles.findIndex((v) => v.id === vehicleId);
@@ -726,6 +912,7 @@ export class FleetTwinService {
       const rIndex = this.inMemoryRoutes.findIndex((r) => r.id === v.route_id);
       if (rIndex !== -1) {
         const r = this.inMemoryRoutes[rIndex];
+        previousRouteName = r.corridor || r.name;
         const travelled = existing.travelled_waypoints || [];
         const alternate = existing.alternate_waypoints || existing.route_waypoints || [];
         // Combine completed travelled + new alternate remaining geometry
@@ -740,6 +927,19 @@ export class FleetTwinService {
       }
     }
 
+    const routeChange = {
+      change_id: `rc-${vehicleId}-${Date.now()}`,
+      vehicle_id: vehicleId,
+      trip_id: existing.original_route_id,
+      previous_route: previousRouteName,
+      new_route: existing.alternate_corridor || existing.recommended_route_name,
+      changed_by: user?.fullName || user?.email || 'Admin',
+      timestamp: new Date().toISOString(),
+      reason: existing.reason || 'Admin authorized dynamic alternate route',
+    };
+    const prevList = this.routeChangesStore.get(vehicleId) || [];
+    this.routeChangesStore.set(vehicleId, [routeChange, ...prevList]);
+
     if (this.supabaseService?.client) {
       try {
         await this.supabaseService.client.from('mock_reroutes').upsert([existing]);
@@ -748,8 +948,35 @@ export class FleetTwinService {
       }
     }
 
+    // Persist driver notification & emit real-time WebSocket update
+    if (user?.orgId && this.supabaseService?.adminClient) {
+      try {
+        await this.supabaseService.adminClient.from('notifications').insert({
+          org_id: user.orgId,
+          user_id: null,
+          type: 'info',
+          title: `Route Updated: ${existing.recommended_route_name}`,
+          body: `Authorized alternate route from current GPS position. New ETA: ${new Date(existing.new_eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+          action_label: 'View Route',
+          action_url: '/roadways/dashboard',
+        });
+      } catch {
+        // non-blocking
+      }
+    }
+
+    if (user?.orgId && this.realtimeGateway) {
+      this.realtimeGateway.broadcastToOrg(user.orgId, 'route:changed', {
+        vehicleId,
+        routeName: existing.recommended_route_name,
+        corridor: existing.alternate_corridor,
+        newEta: existing.new_eta,
+        routeChange,
+      });
+    }
+
     this.invalidateTwinCache(vehicleId);
-    return { success: true, reroute: existing };
+    return { success: true, reroute: existing, routeChange };
   }
 
   /**

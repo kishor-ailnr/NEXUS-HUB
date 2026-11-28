@@ -8,9 +8,11 @@ import { MockTrafficProvider, TomTomTrafficProvider } from './prediction/provide
 import { MockTollProvider, IndianHighwayTollProvider } from './prediction/providers/toll.provider';
 import { WEATHER_PROVIDER, TRAFFIC_PROVIDER, TOLL_PROVIDER } from './tokens';
 import { SupabaseModule } from '../supabase/supabase.module';
+import { RoutingModule } from '../routing/routing.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
-  imports: [SupabaseModule],
+  imports: [SupabaseModule, RoutingModule, RealtimeModule],
   controllers: [FleetTwinController],
   providers: [
     { provide: WEATHER_PROVIDER, useClass: OpenMeteoWeatherProvider },

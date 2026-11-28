@@ -13,4 +13,8 @@ export class SessionDto {
   @IsOptional()
   @IsIn(ORG_MODES as unknown as string[])
   mode?: OrgMode;
+
+  @IsOptional()
+  @IsIn(['admin', 'driver'])
+  selectedRole?: 'admin' | 'driver';
 }

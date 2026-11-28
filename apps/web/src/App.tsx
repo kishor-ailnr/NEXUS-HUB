@@ -48,7 +48,7 @@ export const App: React.FC = () => {
           <Route
             path="/roadways/fleet-twin"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['manager', 'operator']}>
                 <React.Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-cyan-400">Loading Fleet Digital Twin...</div>}>
                   <FleetTwinListPage />
                 </React.Suspense>
@@ -58,7 +58,7 @@ export const App: React.FC = () => {
           <Route
             path="/roadways/fleet-twin/:vehicleId"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['manager', 'operator']}>
                 <React.Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center text-cyan-400">Loading Vehicle Digital Twin...</div>}>
                   <VehicleDigitalTwinPage />
                 </React.Suspense>

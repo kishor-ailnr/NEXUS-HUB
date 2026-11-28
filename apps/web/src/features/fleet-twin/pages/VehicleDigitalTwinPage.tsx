@@ -412,6 +412,16 @@ export const VehicleDigitalTwinPage: React.FC = () => {
             checkpoints={checkpoints}
             activeReroute={twinData.active_reroute}
             previewReroute={previewReroute}
+            canAuthorizeReroute={true}
+            onCloseAlternative={() => {
+              setPreviewReroute(null);
+            }}
+            onAcceptAlternative={async (rerouteId, candidateId) => {
+              await fleetTwinApi.acceptReroute(vehicle.id, rerouteId, candidateId);
+              toast.success('Alternate route authorized and persisted.');
+              setPreviewReroute(null);
+              loadTwin();
+            }}
           />
         </div>
       </div>

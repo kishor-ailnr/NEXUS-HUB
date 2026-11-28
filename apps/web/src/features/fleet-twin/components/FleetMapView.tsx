@@ -33,6 +33,9 @@ import {
   Wrench,
   DollarSign,
   Info,
+  X,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   MockCheckpoint,
@@ -51,6 +54,9 @@ interface FleetMapViewProps {
   checkpoints: MockCheckpoint[];
   activeReroute?: MockReroute | null;
   previewReroute?: MockReroute | null;
+  onCloseAlternative?: () => void;
+  onAcceptAlternative?: (rerouteId?: string, candidateId?: string) => Promise<void> | void;
+  canAuthorizeReroute?: boolean;
 }
 
 /**
@@ -79,34 +85,35 @@ function normalizeLatLngArray(coords: [number, number][]): [number, number][] {
 }
 
 /**
- * Helper to smoothly connect an alternate route polyline from the vehicle position
- * or the designated divergence point along the road network.
+ * Build forward-only road-following alternate path starting strictly from the vehicle's
+ * current GPS position (never from the original trip origin).
  */
 function buildConnectingAlternatePath(
   rawWaypoints: [number, number][],
   vehPos: [number, number],
-  divPt: [number, number] | null,
-  allBaseCoords: [number, number][],
-  splitIdx: number,
+  destPos: [number, number],
 ): [number, number][] {
   const normWaypoints = normalizeLatLngArray(rawWaypoints);
   if (normWaypoints.length === 0) return [];
-  const firstAltPt = normWaypoints[0];
-  const distToFirst = Math.hypot(vehPos[0] - firstAltPt[0], vehPos[1] - firstAltPt[1]);
+  const vecLat = destPos[0] - vehPos[0];
+  const vecLng = destPos[1] - vehPos[1];
+  const lenSq = vecLat * vecLat + vecLng * vecLng;
+  if (lenSq < 1e-6) return [vehPos, ...normWaypoints];
 
-  if (distToFirst > 0.04) {
-    const effectiveDiv = divPt || firstAltPt;
-    const divIdx = allBaseCoords.findIndex(
-      (pt) => Math.hypot(pt[0] - effectiveDiv[0], pt[1] - effectiveDiv[1]) < 0.035,
-    );
-    if (divIdx > splitIdx) {
-      const connectingRoad = allBaseCoords.slice(splitIdx - 1, divIdx + 1);
-      return [...connectingRoad, ...normWaypoints];
-    } else {
-      return [vehPos, ...normWaypoints];
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < normWaypoints.length; i++) {
+    const d = Math.hypot(normWaypoints[i][0] - vehPos[0], normWaypoints[i][1] - vehPos[1]);
+    if (d < bestDist) {
+      bestDist = d;
+      bestIdx = i;
     }
   }
-  return [vehPos, ...normWaypoints];
+  const forward = normWaypoints.slice(bestIdx).filter((pt) => {
+    const proj = ((pt[0] - vehPos[0]) * vecLat + (pt[1] - vehPos[1]) * vecLng) / lenSq;
+    return proj >= -0.04;
+  });
+  return [vehPos, ...(forward.length > 0 ? forward : normWaypoints.slice(bestIdx))];
 }
 
 export const FleetMapView: React.FC<FleetMapViewProps> = ({
@@ -115,11 +122,21 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
   checkpoints,
   activeReroute,
   previewReroute,
+  onCloseAlternative,
+  onAcceptAlternative,
+  canAuthorizeReroute = false,
 }) => {
   const [selectedCheckpoint, setSelectedCheckpoint] = useState<MockCheckpoint | null>(null);
   const [activeTab, setActiveTab] = useState<'map' | 'checkpoints'>('map');
   const [selectedProblem, setSelectedProblem] = useState<RouteProblem | null>(null);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [showAllRouteOptions, setShowAllRouteOptions] = useState(false);
+  const [isAcceptingRoute, setIsAcceptingRoute] = useState(false);
+
+  // Independent layer toggles (clean default map: only active BLUE route, 1 GREEN alternate, vehicle & destination)
+  const [showCheckpoints, setShowCheckpoints] = useState(false);
+  const [showHazards, setShowHazards] = useState(false);
+  const [showTelemetry, setShowTelemetry] = useState(false);
 
   // Map state
   const [tileError, setTileError] = useState(false);
@@ -175,6 +192,7 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
   const allCoords = normalizeLatLngArray(rawCoords);
   const splitIdx = Math.max(1, Math.min(allCoords.length, Math.round((vehicle.progress_pct / 100) * allCoords.length)));
   const vehiclePos = normalizeLatLng([vehicle.current_lat, vehicle.current_lng]);
+  const destAnchorPos = allCoords.length > 0 ? allCoords[allCoords.length - 1] : normalizeLatLng([12.9716, 77.5946]);
 
   // 1. Travelled Route: Dense, verified OSRM roadway geometry from origin up to current vehicle position
   const travelledCoords: [number, number][] =
@@ -232,13 +250,11 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
     primaryAlternateCoords = buildConnectingAlternatePath(
       rawAltWaypoints,
       vehiclePos,
-      divergencePos,
-      allCoords,
-      splitIdx,
+      destAnchorPos,
     );
   }
 
-  // 5. Secondary Candidate Coordinates
+  // 5. Secondary Candidate Coordinates (kept hidden on map unless user clicks a candidate)
   const secondaryRoutePaths: { candidate: AlternateCandidateRoute; coords: [number, number][] }[] =
     useMemo(() => {
       return secondaryCandidates
@@ -250,14 +266,12 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
           const coords = buildConnectingAlternatePath(
             raw,
             vehiclePos,
-            divergencePos,
-            allCoords,
-            splitIdx,
+            destAnchorPos,
           );
           return { candidate: cand, coords };
         })
         .filter((item) => item.coords.length > 1);
-    }, [secondaryCandidates, vehiclePos, divergencePos, allCoords, splitIdx]);
+    }, [secondaryCandidates, vehiclePos, destAnchorPos]);
 
   // Center on fleet
   const handleCenterFleet = useCallback(() => {
@@ -375,13 +389,14 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
     const bounds = L.latLngBounds([]);
 
     // -------------------------------------------------------------
-    // LAYER 1: Completed Travelled Route (Emerald Green solid line)
+    // LAYER 1 (Optional Telemetry): Completed Travelled Route
     // -------------------------------------------------------------
-    if (travelledCoords.length > 1) {
+    if (showTelemetry && travelledCoords.length > 1) {
       L.polyline(travelledCoords, {
-        color: '#10b981',
-        weight: 5,
-        opacity: 0.95,
+        color: '#60a5fa',
+        weight: 4,
+        opacity: 0.7,
+        dashArray: '4, 6',
         lineCap: 'round',
         lineJoin: 'round',
       }).addTo(layerGroup);
@@ -389,14 +404,13 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
     }
 
     // -------------------------------------------------------------
-    // LAYER 2: Original Remaining Route (Blue line, dashed if reroute active/preview)
+    // LAYER 2: Active Vehicle Route (BLUE)
     // -------------------------------------------------------------
     if (remainingOriginalCoords.length > 1) {
       L.polyline(remainingOriginalCoords, {
         color: '#2563eb',
-        weight: 4.5,
-        opacity: 0.85,
-        dashArray: effectiveReroute ? '6, 6' : undefined,
+        weight: 5,
+        opacity: 0.92,
         lineCap: 'round',
         lineJoin: 'round',
       }).addTo(layerGroup);
@@ -404,43 +418,8 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
     }
 
     // -------------------------------------------------------------
-    // LAYER 3: Additional Alternate Candidate Routes (Cyan dashed line)
-    // -------------------------------------------------------------
-    secondaryRoutePaths.forEach(({ candidate: cand, coords }) => {
-      if (coords.length > 1) {
-        const poly = L.polyline(coords, {
-          color: '#0891b2',
-          weight: 4,
-          opacity: 0.8,
-          dashArray: '5, 5',
-          lineCap: 'round',
-          lineJoin: 'round',
-        }).addTo(layerGroup);
-
-        poly.on('click', () => setSelectedCandidateId(cand.id));
-
-        poly.bindPopup(`
-          <div style="font-family: inherit; font-size: 12px; line-height: 1.45; min-width: 220px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-              <strong style="color: #0e7490; font-size: 13px;">${cand.name}</strong>
-              <span style="font-size: 10px; background-color: #cffafe; color: #0891b2; font-weight: bold; padding: 2px 6px; border-radius: 4px;">Candidate</span>
-            </div>
-            <div>Distance: <strong>${cand.distance_km} km</strong></div>
-            <div>Duration: <strong>${Math.floor(cand.duration_minutes / 60)}h ${cand.duration_minutes % 60}m</strong></div>
-            <div>Toll: <strong>₹${cand.toll_cost_inr}</strong> • Fuel: <strong>₹${cand.fuel_cost_inr}</strong></div>
-            <div>Risk Score: <strong>${cand.risk_score}/100</strong></div>
-            <div style="margin-top: 6px; font-size: 11px; color: #0891b2; font-weight: bold; cursor: pointer;">
-              Click candidate pill below map to select this route.
-            </div>
-          </div>
-        `);
-
-        coords.forEach((pt) => bounds.extend(pt));
-      }
-    });
-
-    // -------------------------------------------------------------
-    // LAYER 4: Recommended / Active Alternate Route (Bold Green Line)
+    // LAYER 3: Single Recommended / Selected Alternate Route (GREEN)
+    // (Additional candidates stay hidden unless explicitly selected)
     // -------------------------------------------------------------
     if (primaryAlternateCoords.length > 1) {
       const altPoly = L.polyline(primaryAlternateCoords, {
@@ -488,9 +467,9 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
     }
 
     // -------------------------------------------------------------
-    // LAYER 5: Traffic Congestion Segments & Bottleneck Road Polylines
+    // LAYER 5 (Toggleable): Traffic Congestion Segments
     // -------------------------------------------------------------
-    problems.forEach((prob) => {
+    if (showHazards) problems.forEach((prob) => {
       const isTraffic =
         prob.category === 'traffic_congestion' ||
         prob.category === 'highway_incident' ||
@@ -543,10 +522,10 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
     });
 
     // -------------------------------------------------------------
-    // LAYER 6: Origin & Destination Hub Markers
+    // LAYER 6: Origin (Telemetry Toggle) & Destination Hub Markers
     // -------------------------------------------------------------
     // Origin Terminal
-    if (allCoords.length > 0) {
+    if (showTelemetry && allCoords.length > 0) {
       const originPos = allCoords[0];
       const originIcon = L.divIcon({
         className: 'origin-marker-pin',
@@ -602,9 +581,9 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
     bounds.extend(destPos);
 
     // -------------------------------------------------------------
-    // LAYER 7: Checkpoints along Original Route (Circular Badges)
+    // LAYER 7 (Toggleable): Checkpoints along Original Route
     // -------------------------------------------------------------
-    checkpoints.forEach((cp, idx) => {
+    if (showCheckpoints) checkpoints.forEach((cp, idx) => {
       const cpPos = normalizeLatLng([cp.latitude, cp.longitude]);
       const isPassed = cp.distance_from_start_km <= currentDist;
       const isCurrent =
@@ -647,10 +626,10 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
     });
 
     // -------------------------------------------------------------
-    // LAYER 8: Checkpoints along Alternate Route (Diamond Badges)
+    // LAYER 8 (Toggleable): Checkpoints along Alternate Route
     // -------------------------------------------------------------
     const altCheckpoints = activeCandidate?.checkpoints || [];
-    altCheckpoints.forEach((acp, idx) => {
+    if (showCheckpoints) altCheckpoints.forEach((acp, idx) => {
       const acpPos = normalizeLatLng([acp.latitude, acp.longitude]);
       const diamondIcon = L.divIcon({
         className: 'alt-cp-marker-pin',
@@ -680,9 +659,9 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
     });
 
     // -------------------------------------------------------------
-    // LAYER 9: Divergence Point Marker (if reroute exists)
+    // LAYER 9 (Telemetry Toggle): Divergence Point Marker
     // -------------------------------------------------------------
-    if (divergencePos) {
+    if (showTelemetry && divergencePos) {
       const divIcon = L.divIcon({
         className: 'div-marker-pin',
         html: `
@@ -713,9 +692,9 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
     }
 
     // -------------------------------------------------------------
-    // LAYER 10: Convergence Point Marker (if reroute exists)
+    // LAYER 10 (Telemetry Toggle): Convergence Point Marker
     // -------------------------------------------------------------
-    if (effectiveReroute?.convergence_point) {
+    if (showTelemetry && effectiveReroute?.convergence_point) {
       const convPos = normalizeLatLng([
         effectiveReroute.convergence_point.latitude,
         effectiveReroute.convergence_point.longitude,
@@ -750,9 +729,9 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
     }
 
     // -------------------------------------------------------------
-    // LAYER 11: Hazard, Traffic Bottleneck & Restriction Markers
+    // LAYER 11 (Toggleable): Hazard, Traffic Bottleneck & Restriction Markers
     // -------------------------------------------------------------
-    problems.forEach((prob) => {
+    if (showHazards) problems.forEach((prob) => {
       const probPos = normalizeLatLng([prob.latitude, prob.longitude]);
       const isCritical = prob.severity === 'critical';
       const isHigh = prob.severity === 'high';
@@ -868,6 +847,9 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
     remainingOriginalCoords,
     primaryAlternateCoords,
     checkpoints,
+    showCheckpoints,
+    showHazards,
+    showTelemetry,
   ]);
 
   return (
@@ -980,128 +962,274 @@ export const FleetMapView: React.FC<FleetMapViewProps> = ({
           </div>
         </div>
 
-        {/* 2. Candidate Selection Strip (when multiple alternate options exist) */}
-        {candidates.length > 0 && (
-          <div className="bg-slate-50/90 border border-slate-200/90 rounded-xl px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
-            <div className="flex items-center gap-1.5 text-slate-600 font-semibold text-[11px]">
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-              <span>Route Options:</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {candidates.map((cand) => {
-                const isSelected = activeCandidate?.id === cand.id;
-                return (
-                  <button
-                    key={cand.id}
-                    onClick={() => setSelectedCandidateId(cand.id)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                      isSelected
-                        ? 'bg-emerald-600 text-white shadow-xs font-semibold'
-                        : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
-                    }`}
-                  >
-                    {cand.is_recommended && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-300"></span>
-                    )}
-                    <span>{cand.name}</span>
-                    <span
-                      className={`text-[10px] font-mono ${
-                        isSelected ? 'text-emerald-100' : 'text-slate-500'
-                      }`}
-                    >
-                      ({cand.distance_km} km • {Math.floor(cand.duration_minutes / 60)}h{' '}
-                      {cand.duration_minutes % 60}m)
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+        {/* Independent Layer Toggles (clean map by default) */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-slate-500 font-semibold mr-1">Layers:</span>
+            <button
+              type="button"
+              onClick={() => setShowCheckpoints((p) => !p)}
+              className={`px-2.5 py-1 rounded-full border font-medium cursor-pointer transition ${
+                showCheckpoints
+                  ? 'bg-slate-800 text-white border-slate-800'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Checkpoints ({checkpoints.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowHazards((p) => !p)}
+              className={`px-2.5 py-1 rounded-full border font-medium cursor-pointer transition ${
+                showHazards
+                  ? 'bg-rose-600 text-white border-rose-600'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Congestion &amp; Hazards ({problems.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTelemetry((p) => !p)}
+              className={`px-2.5 py-1 rounded-full border font-medium cursor-pointer transition ${
+                showTelemetry
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Telemetry &amp; Junctions
+            </button>
           </div>
-        )}
-
-        {/* 3. Comprehensive Route Legend – Below the Map (Reflecting ALL 11 Layers) */}
-        <div className="bg-slate-50/90 border border-slate-200/90 rounded-xl px-4 py-2.5 shadow-2xs flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs shrink-0 select-none">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            {/* 1. Travelled Route */}
-            <span className="flex items-center gap-1.5 font-medium text-slate-700">
-              <span className="w-3.5 h-1.5 bg-[#10b981] rounded-full inline-block" />
-              <span>Travelled</span>
+          <div className="flex items-center gap-3 text-[11px]">
+            <span className="flex items-center gap-1.5 font-semibold text-blue-700">
+              <span className="w-3 h-1.5 bg-[#2563eb] rounded-full inline-block" />
+              Active Route
             </span>
-
-            {/* 2. Original Route */}
-            <span className="flex items-center gap-1.5 font-medium text-slate-700">
-              <span className="w-3.5 h-1.5 bg-[#2563eb] rounded-full inline-block" />
-              <span>Original Route</span>
-            </span>
-
-            {/* 3. Recommended Alternate Route */}
             {effectiveReroute && (
-              <span className="flex items-center gap-1.5 font-bold text-emerald-800">
-                <span className="w-3.5 h-1.5 bg-[#059669] rounded-full inline-block" />
-                <span>Recommended Alternate</span>
-              </span>
-            )}
-
-            {/* 4. Additional Candidates */}
-            {secondaryCandidates.length > 0 && (
-              <span className="flex items-center gap-1.5 font-medium text-cyan-700">
-                <span className="w-3.5 h-1.5 border-b-2 border-dashed border-[#0891b2] inline-block" />
-                <span>Alternate Candidate</span>
-              </span>
-            )}
-
-            {/* 5. Live Fleet Position */}
-            <span className="flex items-center gap-1.5 font-medium text-blue-700">
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block ring-2 ring-blue-300" />
-              <span>Fleet Truck</span>
-            </span>
-
-            {/* 6. Divergence Point */}
-            {divergencePos && (
-              <span className="flex items-center gap-1.5 text-amber-700 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block shadow-xs" />
-                <span>Divergence</span>
-              </span>
-            )}
-
-            {/* 7. Convergence Point */}
-            {effectiveReroute?.convergence_point && (
-              <span className="flex items-center gap-1.5 text-purple-700 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-purple-500 inline-block shadow-xs" />
-                <span>Convergence</span>
-              </span>
-            )}
-
-            {/* 8. Destination Terminal */}
-            <span className="flex items-center gap-1.5 text-emerald-700 font-medium">
-              <Flag className="w-3 h-3 text-emerald-600" />
-              <span>Destination</span>
-            </span>
-
-            {/* 9. Checkpoints */}
-            <span className="flex items-center gap-1.5 text-slate-700 font-medium">
-              <span className="w-2.5 h-2.5 rounded-full bg-slate-500 inline-block" />
-              <span>Checkpoints</span>
-            </span>
-
-            {/* 10. Traffic Congestion Road Segment */}
-            <span className="flex items-center gap-1.5 text-rose-700 font-medium">
-              <span className="w-3.5 h-1.5 bg-[#e11d48] rounded-full inline-block" />
-              <span>Congested Road</span>
-            </span>
-
-            {/* 11. Predicted Hazards */}
-            {problems.length > 0 && (
-              <span className="flex items-center gap-1.5 text-rose-700 font-bold">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" />
-                <span>Hazards ({problems.length})</span>
+              <span className="flex items-center gap-1.5 font-semibold text-emerald-700">
+                <span className="w-3 h-1.5 bg-[#059669] rounded-full inline-block" />
+                Alternate Route
               </span>
             )}
           </div>
+        </div>
 
-          <div className="text-[11px] text-slate-500 font-medium hidden sm:inline-block">
-            Corridor:{' '}
-            <span className="text-slate-700 font-semibold">{route.corridor || 'Highway Network'}</span>
+        {/* 2. Route Options Panel Below the Map */}
+        <div className="bg-slate-50/90 border border-slate-200/90 rounded-xl p-3 space-y-2.5 text-xs shrink-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-slate-700 font-bold text-[11px] uppercase tracking-wider">
+              <RouteIcon className="w-3.5 h-3.5 text-blue-600" />
+              <span>Route Options</span>
+            </div>
+            {secondaryCandidates.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowAllRouteOptions((p) => !p)}
+                className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
+              >
+                <span>
+                  {showAllRouteOptions
+                    ? 'Hide Extra Options'
+                    : `Show More Options (${secondaryCandidates.length})`}
+                </span>
+                {showAllRouteOptions ? (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                )}
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-2">
+            {/* BLUE Card: Current Active Route */}
+            <div className="p-2.5 rounded-lg bg-blue-50/70 border border-blue-200 flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-0.5 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0" />
+                  <span className="font-bold text-slate-900 truncate">
+                    {route.corridor || route.name}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-blue-600 text-white text-[9px] font-bold uppercase">
+                    ACTIVE
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-600 pl-4">
+                  <span>
+                    Distance: <strong>{effectiveReroute?.original_metrics?.remaining_distance_km ?? Math.round(remainingDist)} km</strong>
+                  </span>
+                  <span>
+                    Est. Time:{' '}
+                    <strong>
+                      {effectiveReroute?.original_metrics
+                        ? `${Math.floor(effectiveReroute.original_metrics.predicted_travel_time_minutes / 60)}h ${effectiveReroute.original_metrics.predicted_travel_time_minutes % 60}m`
+                        : `${Math.floor((remainingDist / Math.max(30, vehicle.speed_kmh || 55)))}h ${Math.round(((remainingDist / Math.max(30, vehicle.speed_kmh || 55)) % 1) * 60)}m`}
+                    </strong>
+                  </span>
+                  {effectiveReroute?.original_metrics?.expected_eta && (
+                    <span>
+                      ETA:{' '}
+                      <strong>
+                        {new Date(effectiveReroute.original_metrics.expected_eta).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </strong>
+                    </span>
+                  )}
+                  <span>
+                    Traffic:{' '}
+                    <strong>
+                      {(effectiveReroute?.original_metrics?.traffic_delay_minutes || 0) > 15
+                        ? `Congested (+${effectiveReroute?.original_metrics?.traffic_delay_minutes}m)`
+                        : 'Normal Flow'}
+                    </strong>
+                  </span>
+                  <span className="text-slate-500">Delay Diff: Baseline</span>
+                </div>
+              </div>
+            </div>
+
+            {/* GREEN Card: Recommended / Selected Alternate Route */}
+            {effectiveReroute && (
+              <div
+                onClick={handleFitRoute}
+                className="p-2.5 rounded-lg bg-emerald-50/80 border-2 border-emerald-400 flex flex-wrap items-center justify-between gap-2 cursor-pointer transition hover:bg-emerald-50"
+              >
+                <div className="space-y-0.5 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shrink-0" />
+                    <span className="font-bold text-emerald-950 truncate">
+                      {activeCandidate?.name ||
+                        effectiveReroute.recommended_route_name ||
+                        'Recommended Alternate Route'}
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-bold uppercase">
+                      {isAccepted
+                        ? 'ACCEPTED ACTIVE'
+                        : selectedCandidateId
+                        ? 'SELECTED'
+                        : 'RECOMMENDED'}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-emerald-900 pl-4">
+                    <span>
+                      Distance:{' '}
+                      <strong>
+                        {activeCandidate?.distance_km ||
+                          effectiveReroute.alternate_metrics?.remaining_distance_km ||
+                          '--'}{' '}
+                        km
+                      </strong>
+                    </span>
+                    <span>
+                      Est. Time:{' '}
+                      <strong>
+                        {(() => {
+                          const dur =
+                            activeCandidate?.duration_minutes ||
+                            effectiveReroute.alternate_metrics?.predicted_travel_time_minutes ||
+                            0;
+                          return dur ? `${Math.floor(dur / 60)}h ${dur % 60}m` : '--';
+                        })()}
+                      </strong>
+                    </span>
+                    <span>
+                      ETA:{' '}
+                      <strong>
+                        {effectiveReroute.new_eta
+                          ? new Date(effectiveReroute.new_eta).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : '--'}
+                      </strong>
+                    </span>
+                    <span>
+                      Traffic: <strong>Smooth / Bypass</strong>
+                    </span>
+                    <span className="font-semibold text-emerald-700">
+                      Delay Diff:{' '}
+                      {effectiveReroute.time_saved_minutes > 0
+                        ? `-${effectiveReroute.time_saved_minutes} min faster`
+                        : '0 min'}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {canAuthorizeReroute && !isAccepted && onAcceptAlternative && (
+                    <button
+                      type="button"
+                      disabled={isAcceptingRoute}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setIsAcceptingRoute(true);
+                        try {
+                          await onAcceptAlternative(effectiveReroute.id, activeCandidate?.id);
+                        } finally {
+                          setIsAcceptingRoute(false);
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] cursor-pointer transition"
+                    >
+                      {isAcceptingRoute ? 'Applying...' : 'Accept Route'}
+                    </button>
+                  )}
+                  {(selectedCandidateId || isPreview || onCloseAlternative) && (
+                    <button
+                      type="button"
+                      aria-label="Close alternative route"
+                      data-testid="close-alternate-route-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedCandidateId(null);
+                        onCloseAlternative?.();
+                        handleFitRoute();
+                      }}
+                      title="Close alternative and restore default view"
+                      className="p-1 rounded-md bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Additional Candidates (Hidden until explicitly expanded) */}
+            {showAllRouteOptions &&
+              secondaryCandidates.map((cand) => (
+                <button
+                  key={cand.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedCandidateId(cand.id);
+                    handleFitRoute();
+                  }}
+                  className="w-full text-left p-2.5 rounded-lg bg-white hover:bg-emerald-50/40 border border-slate-200 hover:border-emerald-300 transition cursor-pointer flex flex-wrap items-center justify-between gap-2"
+                >
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
+                      <span className="font-semibold text-slate-800 truncate">{cand.name}</span>
+                      <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[9px] font-bold uppercase">
+                        ALTERNATIVE
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-slate-600 pl-4">
+                      <span>Distance: <strong>{cand.distance_km} km</strong></span>
+                      <span>
+                        Est. Time:{' '}
+                        <strong>
+                          {Math.floor(cand.duration_minutes / 60)}h {cand.duration_minutes % 60}m
+                        </strong>
+                      </span>
+                      <span>Risk: <strong>{cand.risk_score}/100</strong></span>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-semibold text-emerald-700">Click to View →</span>
+                </button>
+              ))}
           </div>
         </div>
 

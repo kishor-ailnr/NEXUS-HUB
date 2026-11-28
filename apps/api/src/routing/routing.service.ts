@@ -265,4 +265,73 @@ export class RoutingService {
     // 4. Haversine straight-line fallback (explicitly flagged, never stored in saved_routes as osrm)
     return this.calculateHaversineFallback(waypoints, lastError);
   }
+
+  /**
+   * Computes a genuinely distinct road-network alternate route starting strictly from
+   * (currentLat, currentLng) to (destLat, destLng) using OSRM alternatives & via-bypass.
+   * Rejects duplicate routes (>80% overlap with primaryCoords) and never returns straight-line fallback.
+   */
+  async getDistinctAlternateRoute(
+    currentLat: number,
+    currentLng: number,
+    destLat: number,
+    destLng: number,
+    viaLat: number,
+    viaLng: number,
+    primaryCoords: [number, number][] = [],
+  ): Promise<OsrmRouteGeometry | null> {
+    const isDuplicateOfPrimary = (altCoords: [number, number][]): boolean => {
+      if (!primaryCoords || primaryCoords.length < 4 || altCoords.length < 4) return false;
+      const sampleStep = Math.max(1, Math.floor(altCoords.length / 15));
+      let closeCount = 0;
+      let totalSampled = 0;
+      for (let i = 0; i < altCoords.length; i += sampleStep) {
+        totalSampled++;
+        const [aLng, aLat] = altCoords[i];
+        const near = primaryCoords.some((p) => {
+          const pLat = p[0] > 50 && p[1] < 45 ? p[1] : p[0];
+          const pLng = p[0] > 50 && p[1] < 45 ? p[0] : p[1];
+          return Math.hypot(pLat - aLat, pLng - aLng) < 0.015;
+        });
+        if (near) closeCount++;
+      }
+      return totalSampled > 0 && closeCount / totalSampled > 0.8;
+    };
+
+    const urls = [
+      `https://router.project-osrm.org/route/v1/driving/${currentLng.toFixed(5)},${currentLat.toFixed(5)};${destLng.toFixed(5)},${destLat.toFixed(5)}?overview=full&geometries=geojson&alternatives=true`,
+      `https://router.project-osrm.org/route/v1/driving/${currentLng.toFixed(5)},${currentLat.toFixed(5)};${viaLng.toFixed(5)},${viaLat.toFixed(5)};${destLng.toFixed(5)},${destLat.toFixed(5)}?overview=full&geometries=geojson`,
+    ];
+
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'NEXUS-WAYS-Platform/1.0' },
+        });
+        if (!res.ok) continue;
+        const json = (await res.json()) as any;
+        if (json.code !== 'Ok' || !Array.isArray(json.routes) || json.routes.length === 0) {
+          continue;
+        }
+        // If alternatives=true returned multiple routes, inspect index 1+ first, then 0
+        const orderedRoutes =
+          json.routes.length > 1 ? [...json.routes.slice(1), json.routes[0]] : json.routes;
+        for (const r of orderedRoutes) {
+          const coords = r?.geometry?.coordinates;
+          if (Array.isArray(coords) && coords.length >= 2 && !isDuplicateOfPrimary(coords)) {
+            return {
+              routing_source: 'osrm',
+              routing_status: 'OSRM_SUCCESS',
+              coordinates: coords as [number, number][],
+              distance_km: Math.round((r.distance / 1000) * 100) / 100,
+              duration_minutes: Math.round(r.duration / 60),
+            };
+          }
+        }
+      } catch {
+        // try next strategy
+      }
+    }
+    return null;
+  }
 }

@@ -15,7 +15,7 @@ interface AuthState {
 
   // Actions
   initAuth: () => Promise<void>;
-  login: (email: string, pass: string, mode?: OrgMode) => Promise<UserProfile>;
+  login: (email: string, pass: string, mode?: OrgMode, selectedRole?: 'admin' | 'driver') => Promise<UserProfile>;
   loginWithGoogle: (mode?: OrgMode) => Promise<void>;
   handleOAuthCallback: (accessToken: string, refreshToken: string, mode?: OrgMode) => Promise<UserProfile>;
   register: (data: RegisterRequest) => Promise<UserProfile>;
@@ -121,10 +121,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  login: async (email, password, mode) => {
+  login: async (email, password, mode, selectedRole) => {
     set({ isLoading: true, error: null });
     try {
-      const user = await authService.signInWithPassword(email, password, mode);
+      const user = await authService.signInWithPassword(email, password, mode, selectedRole);
       set({
         user,
         orgId: user.orgId,

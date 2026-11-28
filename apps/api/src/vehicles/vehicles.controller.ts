@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { VehiclesService } from './vehicles.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -28,10 +29,21 @@ export class VehiclesController {
     @Query('search') search?: string,
     @Query('includeArchived') includeArchived?: string,
   ): Promise<Vehicle[]> {
-    return this.vehiclesService.findAll(user.orgId, search, includeArchived === 'true');
+    const vehicles = await this.vehiclesService.findAll(user.orgId, search, includeArchived === 'true');
+    if (user.role === 'driver') {
+      return vehicles.filter(
+        (v) =>
+          v.driver?.user?.id === user.id ||
+          v.driver?.user_id === user.id ||
+          v.active_trip?.driver?.user_id === user.id ||
+          v.active_trip?.driver?.user?.id === user.id,
+      );
+    }
+    return vehicles;
   }
 
   @Get('available')
+  @Roles('manager', 'operator')
   async findAvailable(
     @CurrentUser() user: any,
     @Query('cargoWeightKg') cargoWeightKg?: string,
@@ -41,6 +53,7 @@ export class VehiclesController {
   }
 
   @Get('availability')
+  @Roles('manager', 'operator')
   async getAvailability(@CurrentUser() user: any) {
     return this.vehiclesService.getResourceAvailability(user.orgId);
   }
@@ -62,7 +75,18 @@ export class VehiclesController {
     @CurrentUser() user: any,
     @Param('id') id: string,
   ): Promise<Vehicle> {
-    return this.vehiclesService.findOne(user.orgId, id);
+    const vehicle = await this.vehiclesService.findOne(user.orgId, id);
+    if (user.role === 'driver') {
+      const ownsVehicle =
+        vehicle.driver?.user?.id === user.id ||
+        vehicle.driver?.user_id === user.id ||
+        vehicle.active_trip?.driver?.user_id === user.id ||
+        vehicle.active_trip?.driver?.user?.id === user.id;
+      if (!ownsVehicle) {
+        throw new ForbiddenException('Forbidden: Drivers can only access their own assigned vehicle');
+      }
+    }
+    return vehicle;
   }
 
   @Post()

@@ -37,6 +37,7 @@ export class TripsService {
   private readonly inFlightDriverDispatches = new Set<string>();
   private readonly dispatchMetadataStore = new Map<string, Partial<DispatchTripRequest>>();
   private readonly completionReportsStore = new Map<string, TripCompletionReport>();
+  private readonly deletedTripIds = new Set<string>();
 
   constructor(
     private readonly supabase: SupabaseService,
@@ -109,20 +110,23 @@ export class TripsService {
       }
     });
 
-    return trips.map((t) => {
-      const routeGeom =
-        routeMap.get(`${t.origin_label}:::${t.destination_label}`) ||
-        (t.origin_label && t.destination_label ? findOsrmCorridorByCities(t.origin_label, t.destination_label) : null) ||
-        t.route_geometry ||
-        null;
+    return trips
+      .filter((t) => !this.deletedTripIds.has(t.id))
+      .map((t) => {
+        const routeGeom =
+          routeMap.get(`${t.origin_label}:::${t.destination_label}`) ||
+          (t.origin_label && t.destination_label ? findOsrmCorridorByCities(t.origin_label, t.destination_label) : null) ||
+          t.route_geometry ||
+          null;
 
-      return {
-        ...t,
-        route_geometry: routeGeom,
-        checkpoints: cpByTrip.get(t.id) || t.checkpoints || [],
-        driver_score: scoreByTrip.get(t.id) || null,
-      };
-    });
+        return {
+          ...t,
+          route_geometry: routeGeom,
+          checkpoints: cpByTrip.get(t.id) || t.checkpoints || [],
+          driver_score: scoreByTrip.get(t.id) || null,
+          dispatch_metadata: this.dispatchMetadataStore.get(t.id) || null,
+        };
+      });
   }
 
   async findSavedRoutes(orgId: string, origin?: string, destination?: string): Promise<SavedRoute[]> {
@@ -744,6 +748,53 @@ export class TripsService {
       this.inFlightVehicleDispatches.delete(req.vehicleId);
       this.inFlightDriverDispatches.delete(req.driverId);
     }
+  }
+
+  /**
+   * Delete or deactivate a trip, stop live simulation, release vehicle & driver,
+   * and broadcast removal so Fleet Sidebar & active tracking stay synchronized.
+   */
+  async deleteTrip(orgId: string, tripId: string): Promise<{ success: boolean }> {
+    const trip = await this.findOne(orgId, tripId);
+    this.simulationService.stopSimulation(tripId);
+
+    if (trip.vehicle_id) {
+      await this.supabase.adminClient
+        .from('vehicles')
+        .update({ status: 'idle' })
+        .eq('id', trip.vehicle_id);
+    }
+    if (trip.driver_id) {
+      await this.supabase.adminClient
+        .from('drivers')
+        .update({ status: 'available' })
+        .eq('id', trip.driver_id);
+    }
+
+    const { error } = await this.supabase.adminClient
+      .from('trips')
+      .delete()
+      .eq('org_id', orgId)
+      .eq('id', tripId);
+
+    if (error) {
+      // Preserve referential integrity if historical telemetry/reports reference this trip
+      await this.supabase.adminClient
+        .from('trips')
+        .update({ status: 'cancelled' })
+        .eq('org_id', orgId)
+        .eq('id', tripId);
+      this.deletedTripIds.add(tripId);
+    }
+
+    this.realtimeGateway.broadcastToOrg(orgId, 'tracking:trip_status', {
+      tripId,
+      vehicleId: trip.vehicle_id,
+      driverId: trip.driver_id,
+      status: 'deleted',
+    });
+
+    return { success: true };
   }
 
   /**

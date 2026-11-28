@@ -246,10 +246,10 @@ export const Dashboard: React.FC = () => {
   const ModeIcon = MODE_ICONS[currentMode] || Truck;
 
   // 1. Fetch dashboard data & fleet operational data
-  const loadDashboardData = useCallback(async () => {
+  const loadDashboardData = useCallback(async (force = false) => {
     try {
       if (isRoadways) {
-        await fetchDashboardData('roadways');
+        await fetchDashboardData('roadways', force);
       } else {
         setIsLoadingStats(true);
         const [statsData, statusData, notifsData, countData, latency] = await Promise.all([
@@ -371,19 +371,38 @@ export const Dashboard: React.FC = () => {
         );
       },
       (statusUpdate) => {
+        const isEnded =
+          statusUpdate.status === 'completed' ||
+          statusUpdate.status === 'cancelled' ||
+          statusUpdate.status === 'deleted';
         setTrips((prev) =>
-          prev.map((t) => {
-            if (t.id === statusUpdate.tripId) {
-              return {
-                ...t,
-                status: statusUpdate.status as any,
-                started_at: statusUpdate.startedAt || t.started_at,
-                completed_at: statusUpdate.completedAt || t.completed_at,
-              };
-            }
-            return t;
-          }),
+          isEnded && statusUpdate.status === 'deleted'
+            ? prev.filter((t) => t.id !== statusUpdate.tripId)
+            : prev.map((t) => {
+                if (t.id === statusUpdate.tripId) {
+                  return {
+                    ...t,
+                    status: statusUpdate.status as any,
+                    started_at: statusUpdate.startedAt || t.started_at,
+                    completed_at: statusUpdate.completedAt || t.completed_at,
+                  };
+                }
+                return t;
+              }),
         );
+        if (isEnded) {
+          setVehicles((prev) =>
+            prev.map((v) =>
+              v.id === statusUpdate.vehicleId
+                ? { ...v, status: 'idle', active_trip: undefined }
+                : v,
+            ),
+          );
+          setSelectedTrip(null);
+          if (isRoadways) {
+            fetchDashboardData('roadways', true);
+          }
+        }
       },
       (geofenceEvent) => {
         toast.info(
@@ -504,7 +523,7 @@ export const Dashboard: React.FC = () => {
     setTrips((prev) => [newTrip, ...prev]);
     setSelectedTrip(newTrip);
     setSelectedVehicleId(newTrip.vehicle_id);
-    loadDashboardData();
+    loadDashboardData(true);
   };
 
   // Railways handlers
@@ -735,7 +754,8 @@ export const Dashboard: React.FC = () => {
                     setIsTripModalOpen(true);
                   }}
                   onTripCompleted={() => {
-                    loadDashboardData();
+                    setSelectedTrip(null);
+                    loadDashboardData(true);
                   }}
                   currentUserRole={user?.role}
                 />

@@ -100,6 +100,34 @@ export class NotificationsController {
     return { notification };
   }
 
+  @Post('incident')
+  async reportIncident(
+    @Req() req: any,
+    @Body() body: {
+      vehicleId?: string;
+      tripId?: string;
+      category?: string;
+      severity?: 'critical' | 'high' | 'medium' | 'low';
+      title: string;
+      description: string;
+      lat?: number;
+      lng?: number;
+    },
+  ) {
+    const orgId = req.user.orgId || req.user.org_id;
+    const userId = req.user.id || req.user.sub;
+    const reporterName = req.user.fullName || req.user.email || 'Driver';
+    const notification = await this.notificationsService.createNotification(orgId, {
+      userId: null,
+      type: 'alert',
+      title: `[${(body.severity || 'high').toUpperCase()}] ${body.title || 'Driver Incident Report'}`,
+      body: `${reporterName}: ${body.description}${body.vehicleId ? ` (Vehicle: ${body.vehicleId})` : ''}`,
+      actionLabel: 'Inspect Fleet',
+      actionUrl: body.vehicleId ? `/roadways/fleet-twin/${body.vehicleId}` : '/roadways/dashboard',
+    });
+    return { success: true, notification };
+  }
+
   @Post()
   @UseGuards(RolesGuard)
   @Roles('manager')

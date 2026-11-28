@@ -3,10 +3,12 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { TripsService } from './trips.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -28,9 +30,27 @@ import { CreateTripDto, UpdateTripStatusDto, AddCheckpointDto } from './dto/trip
 export class TripsController {
   constructor(private readonly tripsService: TripsService) {}
 
+  private async assertDriverOwnsTrip(user: any, tripId: string): Promise<Trip> {
+    const trip = await this.tripsService.findOne(user.orgId, tripId);
+    if (user.role === 'driver') {
+      const ownsTrip =
+        trip.driver?.user_id === user.id || trip.driver?.user?.id === user.id;
+      if (!ownsTrip) {
+        throw new ForbiddenException('Forbidden: Drivers can only access their own assigned trips');
+      }
+    }
+    return trip;
+  }
+
   @Get()
   async findAll(@CurrentUser() user: any): Promise<Trip[]> {
-    return this.tripsService.findAll(user.orgId);
+    const trips = await this.tripsService.findAll(user.orgId);
+    if (user.role === 'driver') {
+      return trips.filter(
+        (t) => t.driver?.user_id === user.id || t.driver?.user?.id === user.id,
+      );
+    }
+    return trips;
   }
 
   @Get('history')
@@ -43,7 +63,13 @@ export class TripsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ): Promise<Trip[]> {
-    return this.tripsService.getTripHistory(user.orgId, { vehicleId, driverId, status, search, from, to });
+    const history = await this.tripsService.getTripHistory(user.orgId, { vehicleId, driverId, status, search, from, to });
+    if (user.role === 'driver') {
+      return history.filter(
+        (t) => t.driver?.user_id === user.id || t.driver?.user?.id === user.id,
+      );
+    }
+    return history;
   }
 
   @Post('preview-dispatch')
@@ -78,16 +104,18 @@ export class TripsController {
     @CurrentUser() user: any,
     @Param('id') id: string,
   ) {
+    await this.assertDriverOwnsTrip(user, id);
     return this.tripsService.getCompletionReport(user.orgId, id);
   }
 
   @Post(':id/complete')
-  @Roles('manager')
+  @Roles('manager', 'operator', 'driver')
   async completeTrip(
     @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() body?: { note?: string },
   ) {
+    await this.assertDriverOwnsTrip(user, id);
     return this.tripsService.completeTrip(user.orgId, id, body?.note);
   }
 
@@ -96,6 +124,7 @@ export class TripsController {
     @CurrentUser() user: any,
     @Param('id') id: string,
   ): Promise<TripEtaResponse> {
+    await this.assertDriverOwnsTrip(user, id);
     return this.tripsService.getEta(user.orgId, id);
   }
 
@@ -104,6 +133,7 @@ export class TripsController {
     @CurrentUser() user: any,
     @Param('id') id: string,
   ): Promise<TripReportUrlResponse> {
+    await this.assertDriverOwnsTrip(user, id);
     return this.tripsService.getTripReport(user.orgId, id);
   }
 
@@ -112,7 +142,7 @@ export class TripsController {
     @CurrentUser() user: any,
     @Param('id') id: string,
   ): Promise<Trip> {
-    return this.tripsService.findOne(user.orgId, id);
+    return this.assertDriverOwnsTrip(user, id);
   }
 
   @Post()
@@ -135,11 +165,22 @@ export class TripsController {
   }
 
   @Patch(':id/status')
+  @Roles('manager', 'operator', 'driver')
   async updateStatus(
     @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() dto: UpdateTripStatusDto,
   ): Promise<Trip> {
+    await this.assertDriverOwnsTrip(user, id);
     return this.tripsService.updateStatus(user.orgId, id, dto);
+  }
+
+  @Delete(':id')
+  @Roles('manager', 'operator')
+  async remove(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+  ): Promise<{ success: boolean }> {
+    return this.tripsService.deleteTrip(user.orgId, id);
   }
 }
